@@ -1,0 +1,65 @@
+#include "/Engine/Public/Platform.ush"
+
+struct FScatterPoint
+{
+    float LocationX;
+    float LocationY;
+};
+RWStructuredBuffer<uint> InstanceCountBuffer;
+float2 InputPattern[64];
+float2 PatternSize;
+uint PatternPointNum;
+Texture2D<float> InputTexture;
+SamplerState LinearSampler;
+float4 Rect;
+float Ratio;
+float RadiusScale;
+uint FlipY;
+RWStructuredBuffer<FScatterPoint> OutputPointCloud;
+
+
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y)        --> current group index (dispatched by c++)
+                       uint3 DTid : SV_DispatchThreadID, //atm: 0...256 in rows & columns (XY)   --> "global" thread id
+                       uint3 GTid : SV_GroupThreadID, //atm: 0...256, -,- in columns (X)      --> current threadId in group / "local" threadId
+                       uint GI : SV_GroupIndex)            //atm: 0...256 in columns (X)           --> "flattened" index of a thread within a group))
+{
+    
+    
+    float2 center = float2(Gid.y, Gid.x);
+    uint k = GI;
+    if (k >= PatternPointNum)
+        return;
+    
+    float2 rectSize = Rect.zw-Rect.xy;
+    
+    float2 pos = (center * PatternSize + InputPattern[k]) * RadiusScale;
+    
+    float2 uv = pos / rectSize;
+    if (FlipY)
+        uv.y = 1 - uv.y;
+    pos+=Rect.xy;
+    if (pos.x < Rect.x || pos.x >= Rect.z || pos.y < Rect.y || pos.y >= Rect.w)
+    {
+        return;
+    }
+    
+    float r = saturate(InputTexture.SampleLevel(LinearSampler, uv, 0));
+    
+    float hash1 = frac(dot(DTid.zyy * (DTid.xxy + float3(43.1275, 11.418, -17.1634)) / 3.91 , float3(12.739, 3.1415926, 35.12)));
+    float hash2 = frac(dot(DTid.xyz * (DTid.zxy + float3(2.17501, 69.175501, 109.345)) / 1.73 , float3(20.390625, 60.703125, 2.4281209)));
+    
+    uint curindex;
+    FScatterPoint res;
+    if (r > hash1 && hash2 < Ratio)
+    {
+        
+        InterlockedAdd(InstanceCountBuffer[0], 1, curindex);
+        res.LocationX = pos.x;
+        res.LocationY = pos.y;
+        OutputPointCloud[curindex] = res;
+    }
+    
+    
+}
