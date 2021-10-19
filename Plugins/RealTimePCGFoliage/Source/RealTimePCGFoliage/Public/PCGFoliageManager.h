@@ -49,17 +49,14 @@ protected:
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
-	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override
-	{
-		Super::PostEditChangeProperty(PropertyChangedEvent);
-		ReBuild = false;
-	}
+	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	
 	/**
 	 * Runs the procedural foliage simulation to generate a list of desired instances to spawn.
 	 * @return True if the simulation succeeded
 	 */
 	TArray<FCollisionPass> GetCollisionPasses();
-	bool GenerateProceduralContent(TArray<FDesiredFoliageInstance>& OutFoliageInstances);
+	bool GenerateProceduralContent();
 	bool ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances);
 	void ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);

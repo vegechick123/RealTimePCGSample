@@ -2,6 +2,7 @@
 
 
 #include "PCGFoliageManager.h"
+#include "RealTimePCGFoliageEdMode.h"
 // Sets default values
 APCGFoliageManager::APCGFoliageManager()
 {
@@ -23,10 +24,23 @@ void APCGFoliageManager::Tick(float DeltaTime)
 
 }
 
-bool APCGFoliageManager::GenerateProceduralContent(TArray<FDesiredFoliageInstance>& OutFoliageInstances)
+void APCGFoliageManager::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	{
+		Super::PostEditChangeProperty(PropertyChangedEvent);
+		ReBuild = false;
+		GenerateProceduralContent();
+	}
+}
+
+bool APCGFoliageManager::GenerateProceduralContent()
 {
 #if WITH_EDITOR
-	return ExecuteSimulation(OutFoliageInstances);
+	TArray<FDesiredFoliageInstance> OutFoliageInstances;
+
+	bool Result = ExecuteSimulation(OutFoliageInstances);
+	FRealTimePCGFoliageEdMode::AddInstances(GetWorld(),OutFoliageInstances);
+	return Result;
 #endif
 	return false;
 }
@@ -54,7 +68,7 @@ bool APCGFoliageManager::ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutF
 	FTransform WorldTM;
 	ConvertToFoliageInstance(ScatterPointCloud,WorldTM,2000,OutFoliageInstances);
 	
-	return false;
+	return true;
 }
 
 void APCGFoliageManager::ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutInstances) const

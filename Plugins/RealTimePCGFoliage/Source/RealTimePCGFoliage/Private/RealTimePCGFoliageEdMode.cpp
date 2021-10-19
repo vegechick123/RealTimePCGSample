@@ -520,12 +520,30 @@ void FRealTimePCGFoliageEdMode::AddInstances(UWorld* InWorld, const TArray<FDesi
 		const UFoliageType* FoliageType = It.Key();
 
 		const TArray<FDesiredFoliageInstance>& Instances = It.Value();
-		AddInstancesImp(InWorld, FoliageType, Instances, TArray<int32>(), 1.f, nullptr, nullptr, &OverrideGeometryFilter, InRebuildFoliageTree);
+		AddInstancesImp(InWorld, FoliageType, Instances, TArray<int32>(), nullptr, &OverrideGeometryFilter, InRebuildFoliageTree);
 	}
 }
 
+static void SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, const TArray<FFoliageInstance>& PlacedInstances)
+{
+	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(InWorld, true);
+	UFoliageType* FoliageType = const_cast<UFoliageType*>(Settings);
+	FFoliageInfo* FoliageInfo = IFA->FindOrAddMesh(FoliageType);
+	if (!FoliageInfo)
+		return;
 
-bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld,UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstanceBuckets, const float Pressure, LandscapeLayerCacheData* LandscapeLayerCachesPtr, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter, bool InRebuildFoliageTree)
+	TArray<const FFoliageInstance*> FoliageInstancePointers;
+	for (const FFoliageInstance& Instance : PlacedInstances)
+	{
+		FoliageInstancePointers.Add(&Instance);
+	}
+
+	FoliageInfo->AddInstances(IFA, FoliageType, FoliageInstancePointers);
+
+	IFA->RegisterAllComponents();
+}
+
+bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter, bool InRebuildFoliageTree)
 {
 
 	if (DesiredInstances.Num() == 0)
@@ -533,84 +551,53 @@ bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld,UFoliageType* Se
 		return false;
 	}
 
-	TArray<FPotentialInstance> PotentialInstanceBuckets[NUM_INSTANCE_BUCKETS];
-	if (DesiredInstances[0].PlacementMode == EFoliagePlacementMode::Manual)
-	{
-		CalculatePotentialInstances(InWorld, Settings, DesiredInstances, PotentialInstanceBuckets, LandscapeLayerCachesPtr, UISettings, OverrideGeometryFilter);
-	}
-	else
-	{
+	TArray<FPotentialInstance> PotentialInstanceBuckets;
+
 		//@TODO: actual threaded part coming, need parts of this refactor sooner for content team
-		CalculatePotentialInstances_ThreadSafe(InWorld, Settings, &DesiredInstances, PotentialInstanceBuckets, nullptr, 0, DesiredInstances.Num() - 1, OverrideGeometryFilter);
+	CalculatePotentialInstances_ThreadSafe(InWorld, Settings, &DesiredInstances, PotentialInstanceBuckets, nullptr, OverrideGeometryFilter);
 
-		// Existing foliage types in the palette  we want to override any existing mesh settings with the procedural settings.
-		TMap<AInstancedFoliageActor*, TArray<const UFoliageType*>> UpdatedTypesByIFA;
-		for (TArray<FPotentialInstance>& Bucket : PotentialInstanceBuckets)
+	// Existing foliage types in the palette  we want to override any existing mesh settings with the procedural settings.
+	TMap<AInstancedFoliageActor*, TArray<const UFoliageType*>> UpdatedTypesByIFA;
+	for (auto& PotentialInst : PotentialInstanceBuckets)
+	{
+
+		// Get the IFA for the base component level that contains the component the instance will be placed upon
+		AInstancedFoliageActor* TargetIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(PotentialInst.HitComponent->GetComponentLevel(), true);
+
+		// Update the type in the IFA if needed
+		TArray<const UFoliageType*>& UpdatedTypes = UpdatedTypesByIFA.FindOrAdd(TargetIFA);
+		if (!UpdatedTypes.Contains(PotentialInst.DesiredInstance.FoliageType))
 		{
-			for (auto& PotentialInst : Bucket)
-			{
-				// Get the IFA for the base component level that contains the component the instance will be placed upon
-				AInstancedFoliageActor* TargetIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(PotentialInst.HitComponent->GetComponentLevel(), true);
-
-				// Update the type in the IFA if needed
-				TArray<const UFoliageType*>& UpdatedTypes = UpdatedTypesByIFA.FindOrAdd(TargetIFA);
-				if (!UpdatedTypes.Contains(PotentialInst.DesiredInstance.FoliageType))
-				{
-					UpdatedTypes.Add(PotentialInst.DesiredInstance.FoliageType);
-					TargetIFA->AddFoliageType(PotentialInst.DesiredInstance.FoliageType);
-				}
-			}
+			UpdatedTypes.Add(PotentialInst.DesiredInstance.FoliageType);
+			TargetIFA->AddFoliageType(PotentialInst.DesiredInstance.FoliageType);
 		}
 	}
+
 
 	bool bPlacedInstances = false;
-
-	for (int32 BucketIdx = 0; BucketIdx < NUM_INSTANCE_BUCKETS; BucketIdx++)
-	{
-		TArray<FPotentialInstance>& PotentialInstances = PotentialInstanceBuckets[BucketIdx];
-		float BucketFraction = (float)(BucketIdx + 1) / (float)NUM_INSTANCE_BUCKETS;
-
-		// We use the number that actually succeeded in placement (due to parameters) as the target
-		// for the number that should be in the brush region.
-		const int32 BucketOffset = (ExistingInstanceBuckets.Num() ? ExistingInstanceBuckets[BucketIdx] : 0);
-		int32 AdditionalInstances = FMath::Clamp<int32>(FMath::RoundToInt(BucketFraction * (float)(PotentialInstances.Num() - BucketOffset) * Pressure), 0, PotentialInstances.Num());
-
+	int AdditionalInstances = DesiredInstances.Num();
+	TArray<FFoliageInstance> PlacedInstances;
+	PlacedInstances.Reserve(AdditionalInstances);
+	for (FPotentialInstance& PotentialInstance : PotentialInstanceBuckets)
+	{				
+		FFoliageInstance Inst;
+		if (PotentialInstance.PlaceInstance(InWorld, Settings, Inst))
 		{
-
-			TArray<FFoliageInstance> PlacedInstances;
-			PlacedInstances.Reserve(AdditionalInstances);
-
-			for (int32 Idx = 0; Idx < AdditionalInstances; Idx++)
-			{
-				FPotentialInstance& PotentialInstance = PotentialInstances[Idx];
-				FFoliageInstance Inst;
-				if (PotentialInstance.PlaceInstance(InWorld, Settings, Inst))
-				{
-					Inst.ProceduralGuid = PotentialInstance.DesiredInstance.ProceduralGuid;
-					Inst.BaseComponent = PotentialInstance.HitComponent;
-					PlacedInstances.Add(MoveTemp(Inst));
-					bPlacedInstances = true;
-				}
-			}
-
-			SpawnFoliageInstance(InWorld, Settings, PlacedInstances);
+			Inst.ProceduralGuid = PotentialInstance.DesiredInstance.ProceduralGuid;
+			Inst.BaseComponent = PotentialInstance.HitComponent;
+			PlacedInstances.Add(MoveTemp(Inst));
+			bPlacedInstances = true;
 		}
+		SpawnFoliageInstance(InWorld, Settings, PlacedInstances);
 	}
 
 	return bPlacedInstances;
 }
 
-void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance> OutPotentialInstances[NUM_INSTANCE_BUCKETS], const FFoliageUISettings* UISettings, const int32 StartIdx, const int32 LastIdx, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
+void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance> OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
 {
 
-	// Reserve space in buckets for a potential instances 
-	for (int32 BucketIdx = 0; BucketIdx < NUM_INSTANCE_BUCKETS; ++BucketIdx)
-	{
-		auto& Bucket = OutPotentialInstances[BucketIdx];
-		Bucket.Reserve(DesiredInstances->Num());
-	}
-
-	for (int32 InstanceIdx = StartIdx; InstanceIdx <= LastIdx; ++InstanceIdx)
+	for (int32 InstanceIdx = 0; InstanceIdx <= DesiredInstances->Num(); ++InstanceIdx)
 	{
 		const FDesiredFoliageInstance& DesiredInst = (*DesiredInstances)[InstanceIdx];
 		FHitResult Hit;
@@ -631,27 +618,9 @@ void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWo
 		if (AInstancedFoliageActor::FoliageTrace(InWorld, Hit, DesiredInst, NAME_AddFoliageInstances, true, TraceFilterFunc))
 		{
 			float HitWeight = 1.f;
-			const int32 BucketIndex = FMath::RoundToInt(HitWeight * (float)(NUM_INSTANCE_BUCKETS - 1));
-			OutPotentialInstances[BucketIndex].Add(FPotentialInstance(Hit.ImpactPoint, Hit.ImpactNormal, Hit.Component.Get(), HitWeight, DesiredInst));
+			OutPotentialInstances.Add(FPotentialInstance(Hit.ImpactPoint, Hit.ImpactNormal, Hit.Component.Get(), HitWeight, DesiredInst));
 
 		}
 	}
 }
 
-static void SpawnFoliageInstance(UWorld* InWorld, UFoliageType* Settings, const TArray<FFoliageInstance>& PlacedInstances)
-{
-	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(InWorld, true);
-	FFoliageInfo* FoliageInfo = IFA->FindOrAddMesh(Settings);
-	if (!FoliageInfo)
-		return;
-
-	TArray<const FFoliageInstance*> FoliageInstancePointers;
-	for (const FFoliageInstance& Instance : PlacedInstances)
-	{
-		FoliageInstancePointers.Add(&Instance);
-	}
-
-	FoliageInfo->AddInstances(IFA, Settings, FoliageInstancePointers);
-
-	IFA->RegisterAllComponents();
-}
