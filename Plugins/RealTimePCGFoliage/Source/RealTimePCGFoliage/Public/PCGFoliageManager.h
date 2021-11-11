@@ -7,6 +7,7 @@
 #include "Landscape.h"
 #include "InstancedFoliage.h"
 #include "ReaTimeScatterLibrary.h"
+#include "GameFramework/Volume.h"
 
 #include "PCGFoliageManager.generated.h"
 
@@ -32,11 +33,20 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	bool ReBuild;
-	
+	UPROPERTY(EditAnywhere)
+	FGuid ProceduralGuid;
 	UPROPERTY(EditAnywhere)
 	ALandscape* Landscape;
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* Mask;
+	UPROPERTY(EditAnywhere)
+	UTextureRenderTarget2D* DistanceSeed;
+	UPROPERTY(EditAnywhere)
+	UTextureRenderTarget2D* JFART1;
+	UPROPERTY(EditAnywhere)
+	UTextureRenderTarget2D* JFART2;
+	UPROPERTY(EditAnywhere)
+	UTextureRenderTarget2D* DistanceField;
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* PaintMaterial;
 
@@ -60,4 +70,5 @@ public:
 	bool ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances);
 	void ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
+	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances);
 };

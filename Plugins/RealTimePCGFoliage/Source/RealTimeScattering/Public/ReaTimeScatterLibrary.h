@@ -45,7 +45,7 @@ USTRUCT(BlueprintType)
 struct REALTIMESCATTERING_API FCollisionPass
 {
 	GENERATED_BODY()
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = "0.1", ClampMax = "1.0", UIMin = "0.1", UIMax = "1.0"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = "0.1", ClampMax = "10.0", UIMin = "0.1", UIMax = "10.0"))
 	float Radius;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = "0.1", ClampMax = "1.0", UIMin = "0.1", UIMax = "1.0"))
 	float Ratio;
@@ -120,11 +120,13 @@ public :
 	UFUNCTION(BlueprintCallable)
 	static void RealTImeScatter(const TArray<FColor>& ColorData, FIntPoint TextureSize, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, TArray<FVector2D>& Result, float RadiusScale, float Ratio, bool FlipY);
 	UFUNCTION(BlueprintCallable)
-	static void RealTImeScatterGPU(UObject* WorldContextObject,UTextureRenderTarget2D* Mask, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, TArray<FVector2D>& Result, float RadiusScale, float Ratio,bool FlipY);
+	static void RealTImeScatterGPU(UObject* WorldContextObject,UTextureRenderTarget2D* Mask, UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern,const TArray<FCollisionPass>& InData,	TArray<FScatterPointCloud>& Result ,bool FlipY);
 	UFUNCTION(BlueprintCallable)
 	static void CollisionDiscard(const TArray<FVector2D>& InData, float InRadius, TArray<FVector2D>& OutData, const TArray<FScatterPointCloud>& Tree,int Count);
 	UFUNCTION(BlueprintCallable)
-	static void ScatterWithCollision(UObject* WorldContextObject, UTextureRenderTarget2D* Mask, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FCollisionPass>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU);
+	static void ScatterWithCollision(UObject* WorldContextObject, UTextureRenderTarget2D* Mask, UTextureRenderTarget2D* DistanceSeed,UTextureRenderTarget2D* JFART1,UTextureRenderTarget2D* JFART2, UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FCollisionPass>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU);
 	UFUNCTION(BlueprintCallable)
 	static void ConvertToTransform(FVector2D InBottomLeft, FVector2D InTopRight, FVector2D OutBottomLeft, FVector2D OutTopRight, const TArray<FScatterPointCloud>& InData, TArray<FTransform>& OutData);
+	UFUNCTION(BlueprintCallable)
+	static void JumpFlood(UObject* WorldContextObject, UTextureRenderTarget2D* InputSeed, UTextureRenderTarget2D* InputStepRT, UTextureRenderTarget2D* OutputStepRT, UTextureRenderTarget2D* OutputSDF,float LengthScale);
 };

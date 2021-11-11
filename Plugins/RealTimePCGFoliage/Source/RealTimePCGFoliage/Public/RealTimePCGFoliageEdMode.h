@@ -153,6 +153,8 @@ public:
 	/** FEdMode: Render HUD elements for this tool */
 	virtual void DrawHUD(FEditorViewportClient* ViewportClient, FViewport* Viewport, const FSceneView* View, FCanvas* Canvas) override;
 
+	/** FEdMode: Check to see if an actor can be selected in this mode - no side effects */
+	virtual bool IsSelectionAllowed(AActor* InActor, bool bInSelection) const override;
 	/** Notifies all active modes of mouse click messages. */
 	bool HandleClick(FEditorViewportClient* InViewportClient, HHitProxy* HitProxy, const FViewportClick& Click) override;
 	// End of FEdMode interface
@@ -181,8 +183,12 @@ public:
 	float GetPaintingBrushRadius() const;
 
 	ALandscape* GetLandscape() const;
+
 	UTextureRenderTarget2D* GetEditedRT()const;
+
 	void SetPaintMaterial();
+	
+	static void CleanProcedualFoliageInstance(UWorld* InWorld, FGuid Guid,const UFoliageType* FoliageType);
 
 	static void AddInstances(UWorld* InWorld, const TArray<FDesiredFoliageInstance>& DesiredInstances, const FFoliagePaintingGeometryFilter& OverrideGeometryFilter = FFoliagePaintingGeometryFilter(), bool InRebuildFoliageTree = true);
 
@@ -190,5 +196,7 @@ public:
 	static bool AddInstancesImp(UWorld* InWorld,const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances = TArray<int32>(), const FFoliageUISettings* UISettings = nullptr, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter = nullptr, bool InRebuildFoliageTree = true);
 
 	/** Similar to CalculatePotentialInstances, but it doesn't do any overlap checks which are much harder to thread. Meant to be run in parallel for placing lots of instances */
-	static void CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance> OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter);
+	static void CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter);
+
+	APCGFoliageManager* GetPCGFoliageManager(bool bCreateIfNone = false);
 };

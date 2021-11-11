@@ -27,10 +27,12 @@ public:
 	/// </summary>
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_UAV(RWStructuredBuffer<uint>, InstanceCountBuffer)
-		SHADER_PARAMETER_ARRAY(FVector2D, InputPattern,[64])
+		SHADER_PARAMETER_ARRAY(FVector2D, InputPattern, [64])
 		SHADER_PARAMETER(FVector2D, PatternSize)
 		SHADER_PARAMETER(uint32, PatternPointNum)
 		SHADER_PARAMETER_TEXTURE(Texture2D, InputTexture)
+		SHADER_PARAMETER_TEXTURE(Texture2D, InputSDF)
+		SHADER_PARAMETER_UAV(RWTexture2D<float>, OutputSDF)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearSampler)
 		SHADER_PARAMETER(FVector4, Rect)
 		SHADER_PARAMETER(float, Ratio)
@@ -38,9 +40,9 @@ public:
 		SHADER_PARAMETER(uint32, FlipY)
 		//SHADER_PARAMETER()
 		SHADER_PARAMETER_UAV(RWStructuredBuffer<FScatterPoint>, OutputPointCloud)
-			
-		
-	END_SHADER_PARAMETER_STRUCT()
+
+
+		END_SHADER_PARAMETER_STRUCT()
 
 public:
 	//Called by the engine to determine which permutations to compile for this shader
@@ -66,4 +68,3 @@ public:
 
 
 #undef LOCTEXT_NAMESPACE
-

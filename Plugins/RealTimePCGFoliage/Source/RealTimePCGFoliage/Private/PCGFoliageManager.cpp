@@ -2,13 +2,14 @@
 
 
 #include "PCGFoliageManager.h"
+#include "Components/BrushComponent.h"
+
 #include "RealTimePCGFoliageEdMode.h"
 // Sets default values
 APCGFoliageManager::APCGFoliageManager()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-
 }
 
 // Called when the game starts or when spawned
@@ -26,20 +27,43 @@ void APCGFoliageManager::Tick(float DeltaTime)
 
 void APCGFoliageManager::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	if (Landscape != nullptr)
 	{
-		Super::PostEditChangeProperty(PropertyChangedEvent);
-		ReBuild = false;
+		SetActorScale3D(Landscape->GetActorScale3D());
+	}
+	if (ReBuild)
+	{
 		GenerateProceduralContent();
+		ReBuild = false;
 	}
 }
 
 bool APCGFoliageManager::GenerateProceduralContent()
 {
 #if WITH_EDITOR
+	double start = FPlatformTime::Seconds();
+
 	TArray<FDesiredFoliageInstance> OutFoliageInstances;
 
 	bool Result = ExecuteSimulation(OutFoliageInstances);
+	
+	double end1 = FPlatformTime::Seconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("ExecuteSimulation executed in %f seconds."), end1 - start);
+	// put code you want to time here.
+
+	
+	//
+	CleanPreviousFoliage(OutFoliageInstances);
+	double end2 = FPlatformTime::Seconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("CleanPreviousFoliage executed in %f seconds."), end2 - end1);
+
 	FRealTimePCGFoliageEdMode::AddInstances(GetWorld(),OutFoliageInstances);
+	double end3 = FPlatformTime::Seconds();
+	
+	UE_LOG(LogTemp, Warning, TEXT("AddInstances in %f seconds."), end3 - end2);
 	return Result;
 #endif
 	return false;
@@ -59,14 +83,22 @@ bool APCGFoliageManager::ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutF
 {
 	FScatterPattern Pattern = UReaTimeScatterLibrary::GetDefaultPattern();
 	TArray<FCollisionPass> CollisionPasses = GetCollisionPasses();
-	//Landscape->
-	FVector Scale = Landscape->GetTransform().GetScale3D();
+	FVector Scale = Landscape->GetTransform().GetScale3D()*500;
 	FVector2D Size = FVector2D(Scale.X, Scale.Y);
 	TArray<FScatterPointCloud> ScatterPointCloud;
 	TArray<FDesiredFoliageInstance> OutInstances;
-	UReaTimeScatterLibrary::ScatterWithCollision(this,Mask,Size/2, - Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
+
+	double start = FPlatformTime::Seconds();
+
+	
+	UReaTimeScatterLibrary::ScatterWithCollision(this,Mask, DistanceSeed,JFART1, JFART2,DistanceField,- Size/2, Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
+	double end1 = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("ScatterWithCollision executed in %f seconds."), end1 - start);
+	
 	FTransform WorldTM;
 	ConvertToFoliageInstance(ScatterPointCloud,WorldTM,2000,OutFoliageInstances);
+	double end2 = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("ConvertToFoliageInstance executed in %f seconds."), end2 - end1);
 	
 	return true;
 }
@@ -87,10 +119,11 @@ void APCGFoliageManager::ConvertToFoliageInstance(const TArray<FScatterPointClou
 
 			FDesiredFoliageInstance* DesiredInst = new (OutInstances)FDesiredFoliageInstance(StartRay, EndRay, Points.Radius);
 			DesiredInst->Rotation = FQuat();
-			//DesiredInst->ProceduralGuid = ProceduralGuid;
+			DesiredInst->ProceduralGuid = ProceduralGuid;
 			DesiredInst->FoliageType = PCGFoliageTypes[i].FoliageType;
-			//DesiredInst->Age = 1f;
-			//DesiredInst->ProceduralVolumeBodyInstance = VolumeBodyInstance;
+			DesiredInst->Age = 0;
+			DesiredInst->TraceRadius = 100;
+			DesiredInst->ProceduralVolumeBodyInstance = nullptr;
 			DesiredInst->PlacementMode = EFoliagePlacementMode::Procedural;
 		}
 	}
@@ -98,5 +131,18 @@ void APCGFoliageManager::ConvertToFoliageInstance(const TArray<FScatterPointClou
 
 void APCGFoliageManager::RemoveProceduralContent(bool InRebuildTree)
 {
+}
+
+void APCGFoliageManager::CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances)
+{
+	TSet<const UFoliageType*> Set;
+	for (FDesiredFoliageInstance Instance: OutFoliageInstances)
+	{		
+		Set.Add(Instance.FoliageType);
+	}
+	for (const UFoliageType* FoliageType : Set)
+	{
+		FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(GetWorld(),ProceduralGuid,FoliageType);
+	}
 }
 

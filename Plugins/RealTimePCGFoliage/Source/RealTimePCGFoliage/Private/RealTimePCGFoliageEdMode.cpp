@@ -96,6 +96,9 @@ void FRealTimePCGFoliageEdMode::Enter()
 {
 	FEdMode::Enter();
 
+	// Clear any selection in case the instanced foliage actor is selected
+	GEditor->SelectNone(true, true);
+
 	if (!Toolkit.IsValid() && UsesToolkits())
 	{
 		Toolkit = MakeShareable(new FRealTimePCGFoliageEdModeToolkit);
@@ -149,6 +152,7 @@ void FRealTimePCGFoliageEdMode::Tick(FEditorViewportClient* ViewportClient, floa
 	if (bToolActive)
 	{
 		ApplyBrush(ViewportClient);
+
 	}
 
 	FEdMode::Tick(ViewportClient, DeltaTime);
@@ -436,6 +440,10 @@ void FRealTimePCGFoliageEdMode::Render(const FSceneView* View, FViewport* Viewpo
 void FRealTimePCGFoliageEdMode::DrawHUD(FEditorViewportClient* ViewportClient, FViewport* Viewport, const FSceneView* View, FCanvas* Canvas)
 {
 }
+bool FRealTimePCGFoliageEdMode::IsSelectionAllowed(AActor* InActor, bool bInSelection) const
+{
+	return false;
+}
 bool FRealTimePCGFoliageEdMode::HandleClick(FEditorViewportClient* InViewportClient, HHitProxy* HitProxy, const FViewportClick& Click)
 {
 	return FEdMode::HandleClick(InViewportClient, HitProxy, Click);
@@ -447,6 +455,8 @@ void FRealTimePCGFoliageEdMode::PreApplyBrush()
 void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient)
 {
 	ALandscape* Land = GetLandscape();
+	if (Land == nullptr)
+		return;
 	FVector LocalCoord = Land->GetTransform().InverseTransformPosition(BrushLocation);
 	LocalCoord.X /= 505;
 	LocalCoord.Y /= 505;
@@ -454,9 +464,12 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	FVector2D Size;
 	FDrawToRenderTargetContext Context;
 	SetPaintMaterial();
+	UTextureRenderTarget2D* RT = GetEditedRT();
+	RT->Modify();
 	//UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(PCGFoliageManager,GetEditedRT(),Canvas,Size,Context);
-	UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager, GetEditedRT(), PaintMID);
+	UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager,RT, PaintMID);
 
+	PCGFoliageManager->GenerateProceduralContent();
 	//UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(PCGFoliageManager, Context);
 	
 }
@@ -505,6 +518,29 @@ void FRealTimePCGFoliageEdMode::SetPaintMaterial()
 	//UE_LOG(LogTemp, Warning, TEXT("Hit %f %f %f"), BrushLocation.X, BrushLocation.Y, BrushLocation.Z);
 }
 
+void FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(UWorld* InWorld,FGuid Guid,const UFoliageType* FoliageType)
+{
+
+	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InWorld->GetCurrentLevel());
+	FFoliageInfo* Info =  IFA->FindInfo(FoliageType);
+	if (Info)
+	{
+		TArray<int32> InstancesToRemove;
+		for (int32 InstanceIdx = 0; InstanceIdx < Info->Instances.Num(); InstanceIdx++)
+		{
+			if (Info->Instances[InstanceIdx].ProceduralGuid == Guid)
+			{
+				InstancesToRemove.Add(InstanceIdx);
+			}
+		}
+
+		if (InstancesToRemove.Num())
+		{
+			Info->RemoveInstances(IFA, InstancesToRemove, true);
+		}
+	}
+}
+
 
 void FRealTimePCGFoliageEdMode::AddInstances(UWorld* InWorld, const TArray<FDesiredFoliageInstance>& DesiredInstances, const FFoliagePaintingGeometryFilter& OverrideGeometryFilter, bool InRebuildFoliageTree)
 {
@@ -526,21 +562,28 @@ void FRealTimePCGFoliageEdMode::AddInstances(UWorld* InWorld, const TArray<FDesi
 
 static void SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, const TArray<FFoliageInstance>& PlacedInstances)
 {
+	double start = FPlatformTime::Seconds();
+
 	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(InWorld, true);
 	UFoliageType* FoliageType = const_cast<UFoliageType*>(Settings);
 	FFoliageInfo* FoliageInfo = IFA->FindOrAddMesh(FoliageType);
-	if (!FoliageInfo)
-		return;
 
-	TArray<const FFoliageInstance*> FoliageInstancePointers;
+	TArray<const FFoliageInstance*> PointerArray;
+
+	
 	for (const FFoliageInstance& Instance : PlacedInstances)
 	{
-		FoliageInstancePointers.Add(&Instance);
+		PointerArray.Add(&Instance);
 	}
-
-	FoliageInfo->AddInstances(IFA, FoliageType, FoliageInstancePointers);
+	FoliageInfo->AddInstances(IFA, FoliageType, PointerArray);
+	if (FoliageInfo->GetComponent())
+		FoliageInfo->GetComponent()->BuildTreeIfOutdated(true, true);
 
 	IFA->RegisterAllComponents();
+
+	double end1 = FPlatformTime::Seconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("SpawnFoliageInstance in %f seconds."), end1 - start);
 }
 
 bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter, bool InRebuildFoliageTree)
@@ -588,16 +631,18 @@ bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageT
 			PlacedInstances.Add(MoveTemp(Inst));
 			bPlacedInstances = true;
 		}
-		SpawnFoliageInstance(InWorld, Settings, PlacedInstances);
+		
 	}
+	SpawnFoliageInstance(InWorld, Settings, PlacedInstances);
 
 	return bPlacedInstances;
 }
 
-void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance> OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
+void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
 {
+	double start = FPlatformTime::Seconds();
 
-	for (int32 InstanceIdx = 0; InstanceIdx <= DesiredInstances->Num(); ++InstanceIdx)
+	for (int32 InstanceIdx = 0; InstanceIdx < DesiredInstances->Num(); ++InstanceIdx)
 	{
 		const FDesiredFoliageInstance& DesiredInst = (*DesiredInstances)[InstanceIdx];
 		FHitResult Hit;
@@ -622,5 +667,25 @@ void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWo
 
 		}
 	}
+
+	double end1 = FPlatformTime::Seconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("TraceAll executed in %f seconds."), end1 - start);
+}
+
+APCGFoliageManager* FRealTimePCGFoliageEdMode::GetPCGFoliageManager(bool bCreateIfNone)
+{
+
+	APCGFoliageManager* Result;
+	for (TActorIterator<APCGFoliageManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	{
+		Result = Cast<APCGFoliageManager>(*ActorItr);
+		if (Result)
+		{
+			return Result;
+		}
+	}
+	return nullptr;
+
 }
 

@@ -1,0 +1,87 @@
+#include "/Engine/Public/Platform.ush"
+#define EMPTY_FLAG 65535
+Texture2D<float> InputSeed;
+Texture2D<uint2> InputStepRT;
+RWTexture2D<uint2> OutputStepRT;
+RWTexture2D<float> OutputSDF;
+uint Step;
+float LengthScale;
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void InitStepMain(uint3 id : SV_DispatchThreadID)
+{
+    float inputTexture = InputSeed[id.xy];
+    float determin = inputTexture;
+    OutputStepRT[id.xy] = determin >= 1 ? id.xy : uint2(EMPTY_FLAG, EMPTY_FLAG);
+    //OutputStepRT[id.xy] = id.x<64  &&id.y<64 ? id.xy : uint2(EMPTY_FLAG, EMPTY_FLAG); // >= 1 ? id.xy : uint2(EMPTY_FLAG, EMPTY_FLAG);
+    
+}
+
+uint2 JFAStep(uint2 inputTex, uint2 idxy)
+{
+    uint2 outputTex = inputTex;
+    uint2 TexSize;
+    InputStepRT.GetDimensions(TexSize.x, TexSize.y);
+	//cull inside
+    if (inputTex.x != idxy.x || inputTex.y != idxy.y)
+    {
+        uint2 nearestID = inputTex;
+        float minDistance = 1e16;
+        if (nearestID.x != EMPTY_FLAG)
+        {
+            minDistance = length((float2(nearestID) - idxy) * TexSize) * LengthScale- InputSeed[nearestID];
+
+        }
+
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                if(dx==0&&dy==0)
+                    continue;
+                int2 sampleID = int2(dx,dy) * Step+idxy;                
+                sampleID = clamp(sampleID, 0, TexSize - uint2(1, 1));
+                uint2 newID = InputStepRT[sampleID];
+			    //if had min distance in previous flooding
+                if (newID.x != EMPTY_FLAG)
+                {
+                    float tempDistance = length((float2(newID) - idxy) * TexSize) * LengthScale - InputSeed[newID];
+                    if (tempDistance < minDistance)
+                    {
+                        minDistance = tempDistance;
+                        nearestID = newID;
+                        outputTex = nearestID;
+
+                    }
+                }
+            }
+    }
+    return outputTex;
+}
+float JFADist(uint2 curID, uint2 seedID)
+{
+    uint2 TexSize;
+    InputSeed.GetDimensions(TexSize.x, TexSize.y);
+    return length((float2(curID) - seedID) / TexSize) * LengthScale-InputSeed[seedID];
+}
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void JFAMain(uint3 id : SV_DispatchThreadID)
+{
+
+    uint2 inputTexture = InputStepRT[id.xy];
+    OutputStepRT[id.xy] = JFAStep(inputTexture, id.xy);
+    
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void SDFOutputMain(uint3 id : SV_DispatchThreadID)
+{
+    uint2 TexSize;
+    InputStepRT.GetDimensions(TexSize.x, TexSize.y);
+    //OutputSDF[id.xy] = -1.0f;
+    //OutputSDF[id.xy] = InputSeed[id.xy];
+    //OutputSDF[id.xy] = InputStepRT[id.xy] * 1.0 / TexSize;
+     //= length((float2(id.xy) - InputStepRT[id.xy])  / TexSize)-0.01; // - InputSeed[InputStepRT[id.xy]];
+    OutputSDF[id.xy] = min(JFADist(id.xy, InputStepRT[id.xy]), OutputSDF[id.xy]); //,1e16);
+    
+
+}

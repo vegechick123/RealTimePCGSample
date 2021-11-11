@@ -10,6 +10,8 @@ float2 InputPattern[64];
 float2 PatternSize;
 uint PatternPointNum;
 Texture2D<float> InputTexture;
+Texture2D<float> InputSDF;
+RWTexture2D<float> OutputSDF;
 SamplerState LinearSampler;
 float4 Rect;
 float Ratio;
@@ -46,19 +48,22 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     }
     
     float r = saturate(InputTexture.SampleLevel(LinearSampler, uv, 0));
+    float sdf = saturate(InputSDF.SampleLevel(LinearSampler, uv, 0));
     
     float hash1 = frac(dot(DTid.zyy * (DTid.xxy + float3(43.1275, 11.418, -17.1634)) / 3.91 , float3(12.739, 3.1415926, 35.12)));
     float hash2 = frac(dot(DTid.xyz * (DTid.zxy + float3(2.17501, 69.175501, 109.345)) / 1.73 , float3(20.390625, 60.703125, 2.4281209)));
     
     uint curindex;
+    uint2 sdfSize;
+    OutputSDF.GetDimensions(sdfSize.x, sdfSize.y);
     FScatterPoint res;
-    if (r > hash1 && hash2 < Ratio)
+    if (r > hash1 && hash2 < Ratio && sdf > 0)
     {
-        
         InterlockedAdd(InstanceCountBuffer[0], 1, curindex);
         res.LocationX = pos.x;
         res.LocationY = pos.y;
-        OutputPointCloud[curindex] = res;
+        OutputPointCloud[curindex] = res;          
+        OutputSDF[sdfSize * uv] = RadiusScale*100;
     }
     
     

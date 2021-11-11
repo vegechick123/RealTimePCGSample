@@ -4,8 +4,11 @@
 #include "ReaTimeScatterLibrary.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "GPUScatteringCS.h"
+#include "JumpFloodCS.h"
 #include "RenderGraphUtils.h"
 #include "Async/ParallelFor.h"
+#include "KdTree.h"
+
 void FScatterPointCloud::BuildKdTree()
 {
 	for (FScatterPoint P : ScatterPoints)
@@ -73,19 +76,22 @@ void UReaTimeScatterLibrary::RealTImeScatter(const TArray<FColor>& ColorData, FI
 }
 static void RealTImeScatterGPU_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
-	FRHITexture* DensityTexture,
+	FRHITexture2D* DensityTexture,
+	FRHITexture2D* InputSDFTexture,
+	FRHITexture2D* SDFSeedTexture,
 	const FScatterPattern& Pattern,
 	FVector4 Rect,
 	float Ratio,
 	float RadiusScale,
 	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
-	TArray<FVector2D>& OutputPointCloud
+	TArray<FScatterPoint>& OutputPointCloud
 )
 {
 
 	check(IsInRenderingThread());
 	FVector2D Size = FVector2D(Rect.Z, Rect.W) - FVector2D(Rect.X, Rect.Y);
+	FIntPoint TexSize = DensityTexture->GetSizeXY();
 	FVector2D Temp = Size / (Pattern.Size * RadiusScale);
 	int PerPointsCnt = Pattern.PointCloud.Num();
 	FIntPoint CellNumber = FIntPoint(ceilf(Temp.X), ceilf(Temp.Y));
@@ -104,6 +110,8 @@ static void RealTImeScatterGPU_RenderThread(
 
 	FRHIResourceCreateInfo CreateInfo;
 	CreateInfo.ResourceArray = &bufferData;
+		
+	FUnorderedAccessViewRHIRef SDFSeedUAV = RHICreateUnorderedAccessView(SDFSeedTexture);
 
 	FStructuredBufferRHIRef  InstanceCountBuffer = RHICreateStructuredBuffer(sizeof(uint32), sizeof(uint32) * 1, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
 	FUnorderedAccessViewRHIRef InstanceCountBufferUAV = RHICreateUnorderedAccessView(InstanceCountBuffer, true, false);
@@ -117,6 +125,8 @@ static void RealTImeScatterGPU_RenderThread(
 	Params.PatternSize = Pattern.Size;
 	Params.PatternPointNum = Pattern.PointCloud.Num();
 	Params.InputTexture = DensityTexture;
+	Params.InputSDF = InputSDFTexture;
+	Params.OutputSDF = SDFSeedUAV;
 	Params.LinearSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 	Params.Rect = Rect;
 	Params.Ratio = Ratio;
@@ -135,13 +145,18 @@ static void RealTImeScatterGPU_RenderThread(
 
 	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(CellNumber.X, CellNumber.Y, 1));
 
+	double start = FPlatformTime::Seconds();
+
 	uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
+	
+	double end1 = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("ReadBackCount executed in %f seconds."), end1 - start);
+
 	RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
-	//OutputPointCloud.Points
 	if (Count != 0)
 	{
 		//TODO
-		TArray<FVector2D>& OutputData = OutputPointCloud;
+		TArray<FScatterPoint>& OutputData = OutputPointCloud;
 		OutputData.Reset(Count);
 		OutputData.AddUninitialized(Count);
 		FScatterPoint* srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * Maxnum, EResourceLockMode::RLM_ReadOnly);
@@ -150,8 +165,155 @@ static void RealTImeScatterGPU_RenderThread(
 		RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
 		//
 	}
+	double end2 = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("ReadBackPointCloud executed in %f seconds."), end2 - end1);
+	
 }
-void UReaTimeScatterLibrary::RealTImeScatterGPU(UObject* WorldContextObject,UTextureRenderTarget2D* Mask, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, TArray<FVector2D>& Result, float RadiusScale, float Ratio, bool FlipY)
+static void JumpFlood_RenderThread(
+	FRHICommandListImmediate& RHICmdList,
+	FRHITexture2D* InputSeedTexture,
+	FUnorderedAccessViewRHIRef OutputSDFRTUAV,
+	float LengthScale,
+	ERHIFeatureLevel::Type FeatureLevel)
+{
+	TShaderMapRef<FJFAInitCS>JFAInitCS(GetGlobalShaderMap(FeatureLevel));
+	FJFAInitCS::FParameters JFAInitParams;
+	TShaderMapRef<FJFAStepCS>JFAStepCS(GetGlobalShaderMap(FeatureLevel));
+	FJFAStepCS::FParameters JFAStepParams;
+	TShaderMapRef<FJFASDFOutputCS>JFASDFOutputCS(GetGlobalShaderMap(FeatureLevel));
+	FJFASDFOutputCS::FParameters JFASDFOutputParams;
+
+	FIntPoint TexSize = InputSeedTexture->GetSizeXY();
+
+	FRHIResourceCreateInfo CreateInfo;
+	FTexture2DRHIRef PingPointRT1 = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32G32_UINT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FUnorderedAccessViewRHIRef PingPointRT1UAV = RHICreateUnorderedAccessView(PingPointRT1);
+	FTexture2DRHIRef PingPointRT2 = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32G32_UINT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FUnorderedAccessViewRHIRef PingPointRT2UAV = RHICreateUnorderedAccessView(PingPointRT2);
+	
+	//JFAInit
+	JFAInitParams.InputSeed = InputSeedTexture;
+	JFAInitParams.OutputStepRT = PingPointRT1UAV;
+	FIntVector GroupCount;
+	GroupCount.X = (TexSize.X - 1) / 8 + 1;
+	GroupCount.Y = (TexSize.Y - 1) / 8 + 1;
+	GroupCount.Z = 1;
+
+	//FGPUFenceRHIRef Fence = RHICmdList.CreateGPUFence(FName("111"));
+	//JFAInitCS->Fence
+	FComputeShaderUtils::Dispatch(RHICmdList, JFAInitCS, JFAInitParams, GroupCount);
+	//Debug
+
+
+	//JFAStep
+	uint32 Step = FMath::Max(PingPointRT1->GetSizeX(), PingPointRT1->GetSizeY()) / 2;
+	bool PingPong = false;
+	JFAStepParams.InputSeed = InputSeedTexture;
+	JFAStepParams.LengthScale = LengthScale;
+	while (Step >= 1)
+	{
+		if (!PingPong)
+		{
+			JFAStepParams.InputStepRT = PingPointRT1;
+			JFAStepParams.OutputStepRT = PingPointRT2UAV;
+		}
+		else
+		{
+			JFAStepParams.InputStepRT = PingPointRT2;
+			JFAStepParams.OutputStepRT = PingPointRT1UAV;
+		}
+		JFAStepParams.Step = Step;
+		PingPong = !PingPong;
+		Step >>= 1;
+		FComputeShaderUtils::Dispatch(RHICmdList, JFAStepCS, JFAStepParams, GroupCount);
+
+
+	}
+
+	////JFAOutputSDF
+	JFASDFOutputParams.InputSeed = InputSeedTexture;
+	if (!PingPong)
+		JFASDFOutputParams.InputStepRT = PingPointRT1;
+	else
+		JFASDFOutputParams.InputStepRT = PingPointRT2;
+	JFASDFOutputParams.OutputSDF = OutputSDFRTUAV;
+	JFASDFOutputParams.LengthScale = LengthScale;
+
+	FComputeShaderUtils::Dispatch(RHICmdList, JFASDFOutputCS, JFASDFOutputParams, GroupCount);
+
+	
+}
+void ScatterFoliagePass_RenderThread(
+	FRHICommandListImmediate& RHICmdList,
+	FTextureRenderTargetResource* DensityResource,
+	FTextureRenderTargetResource* SDFResource,
+	const FScatterPattern& Pattern,
+	FVector4 Rect,
+	const TArray<FCollisionPass>& InData,
+	bool FlipY,
+	ERHIFeatureLevel::Type FeatureLevel,
+	TArray<FScatterPointCloud>& OutputPointCloud
+)
+{
+	check(IsInRenderingThread());
+
+	
+	
+	FRHITexture2D* DensityTexture = DensityResource->GetRenderTargetTexture();
+	FRHITexture2D* SDFTexture = SDFResource->GetRenderTargetTexture();
+	
+
+	FIntPoint TexSize = DensityTexture->GetSizeXY();
+
+	FRHIResourceCreateInfo CreateInfo;
+	FRHITexture2D* SDFSeedTexture = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FTexture2DRHIRef OutputSDFRT = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FUnorderedAccessViewRHIRef OutputSDFRTUAV = RHICreateUnorderedAccessView(OutputSDFRT);
+	RHICmdList.ClearUAVFloat(OutputSDFRTUAV, FVector4(1e16, 1e16, 1e16, 1e16));
+
+	for (int i = 0; i < InData.Num(); i++)
+	{
+		float Ratio=InData[i].Ratio;
+		float RadiusScale= InData[i].Radius;
+		RealTImeScatterGPU_RenderThread
+		(
+			RHICmdList,
+			DensityTexture,
+			OutputSDFRT,
+			SDFSeedTexture,
+			Pattern,
+			Rect,
+			Ratio,
+			RadiusScale,
+			FlipY,
+			FeatureLevel,
+			OutputPointCloud[i].ScatterPoints
+		);
+		JumpFlood_RenderThread
+		(
+			RHICmdList,
+			SDFSeedTexture,
+			OutputSDFRTUAV,
+			Rect.Z - Rect.X,
+			FeatureLevel
+		);
+	}
+	FRHICopyTextureInfo CopyInfo;
+	CopyInfo.Size.X = TexSize.X;
+	CopyInfo.Size.Y = TexSize.Y;
+	CopyInfo.Size.Z = 1;
+	RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
+}
+void UReaTimeScatterLibrary::RealTImeScatterGPU(
+	UObject* WorldContextObject,
+	UTextureRenderTarget2D* Mask, 
+	UTextureRenderTarget2D* OutputDistanceField, 
+	FVector2D BottomLeft, 
+	FVector2D TopRight, 
+	const FScatterPattern& Pattern,
+	const TArray<FCollisionPass>& InData,
+	TArray<FScatterPointCloud>& Result, 
+	bool FlipY)
 {
 	check(IsInGameThread());
 
@@ -164,20 +326,44 @@ void UReaTimeScatterLibrary::RealTImeScatterGPU(UObject* WorldContextObject,UTex
 		return;
 	}
 	
-	FRHITexture* DensityResource = Mask->TextureReference.TextureReferenceRHI->GetTextureReference()->GetReferencedTexture();
+	//FRHITexture* DensityResource = Mask->TextureReference.TextureReferenceRHI->GetTextureReference()->GetReferencedTexture();
+	//FTextureRenderTargetResource* OutputDistanceFieldResource = OutputDistanceField->GameThread_GetRenderTargetResource();
+	//ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
+	//ENQUEUE_RENDER_COMMAND(CaptureCommand)
+	//	(
+	//		[DensityResource, OutputDistanceFieldResource, FeatureLevel,&Pattern,BottomLeft,TopRight,Ratio,RadiusScale,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
+	//		{
+	//			RealTImeScatterGPU_RenderThread
+	//			(
+	//				RHICmdList,
+	//				DensityResource,
+	//				OutputDistanceFieldResource,
+	//				Pattern,
+	//				FVector4(BottomLeft.X, BottomLeft.Y,TopRight.X, TopRight.Y),
+	//				Ratio,
+	//				RadiusScale,
+	//				FlipY,
+	//				FeatureLevel,
+	//				Result
+	//			);
+	//		}
+	//);
+
+	FTextureRenderTargetResource* DensityResource= Mask->GameThread_GetRenderTargetResource();
+	FTextureRenderTargetResource* OutputDistanceFieldResource = OutputDistanceField->GameThread_GetRenderTargetResource();
 	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)
 		(
-			[DensityResource, FeatureLevel,&Pattern,BottomLeft,TopRight,Ratio,RadiusScale,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
+			[DensityResource, OutputDistanceFieldResource, FeatureLevel,&Pattern,BottomLeft,TopRight, InData,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
 			{
-				RealTImeScatterGPU_RenderThread
+				ScatterFoliagePass_RenderThread
 				(
 					RHICmdList,
 					DensityResource,
+					OutputDistanceFieldResource,
 					Pattern,
 					FVector4(BottomLeft.X, BottomLeft.Y,TopRight.X, TopRight.Y),
-					Ratio,
-					RadiusScale,
+					InData,
 					FlipY,
 					FeatureLevel,
 					Result
@@ -210,7 +396,19 @@ void UReaTimeScatterLibrary::CollisionDiscard(const TArray<FVector2D>& InData, f
 
 		});
 }
-void UReaTimeScatterLibrary::ScatterWithCollision(UObject* WorldContextObject,UTextureRenderTarget2D* Mask, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FCollisionPass>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU)
+void UReaTimeScatterLibrary::ScatterWithCollision(
+	UObject* WorldContextObject,
+	UTextureRenderTarget2D* Mask,
+	UTextureRenderTarget2D* DistanceSeed, 
+	UTextureRenderTarget2D* JFART1, 
+	UTextureRenderTarget2D* JFART2,
+	UTextureRenderTarget2D* OutputDistanceField, 
+	FVector2D BottomLeft, FVector2D TopRight, 
+	const FScatterPattern& Pattern, 
+	const TArray<FCollisionPass>& InData, 
+	TArray<FScatterPointCloud>& OutData, 
+	bool FlipY,
+	bool UseGPU)
 {
 	if (!Mask||InData.Num() == 0)
 		return;
@@ -226,59 +424,14 @@ void UReaTimeScatterLibrary::ScatterWithCollision(UObject* WorldContextObject,UT
 			return;
 		}
 	}
-	
-	TArray<FRenderCommandFence> Fences;
+
+	FRenderCommandFence Fence;
 	TArray<TArray<FVector2D>> TempData;
 	OutData.AddDefaulted(InData.Num());
-	
-	Fences.AddDefaulted(InData.Num());
-	TempData.AddDefaulted(InData.Num() - 1);
+	RealTImeScatterGPU(WorldContextObject, Mask, OutputDistanceField, BottomLeft, TopRight, Pattern, InData, OutData,  FlipY);
+	Fence.BeginFence();
+	Fence.Wait();
 
-	for (int i = 0; i < InData.Num(); i++)
-	{
-		
-		OutData[i].Radius = InData[i].Radius;
-		if (i == 0)
-		{
-			if (UseGPU)
-			{
-				RealTImeScatterGPU(WorldContextObject, Mask, BottomLeft, TopRight, Pattern, OutData[i].Points, InData[i].Radius, InData[i].Ratio, FlipY);
-				Fences[i].BeginFence();
-			}
-			else
-			{
-				RealTImeScatter(Samples, SampleRect.Size(), BottomLeft, TopRight, Pattern, OutData[i].Points, InData[i].Radius, InData[i].Ratio, FlipY);
-			}
-			
-		}
-		else
-		{;
-			if (UseGPU)
-			{
-				RealTImeScatterGPU(WorldContextObject, Mask, BottomLeft, TopRight, Pattern, TempData[i-1], InData[i].Radius, InData[i].Ratio, FlipY);
-				Fences[i].BeginFence();
-			}
-			else
-			{
-				RealTImeScatter(Samples, SampleRect.Size(), BottomLeft, TopRight, Pattern, TempData[i-1], InData[i].Radius, InData[i].Ratio, FlipY);
-			}
-				
-			
-		}		
-	}
-
-	Fences[0].Wait();
-	for (int i = 1; i < InData.Num(); i++)
-	{
-		Fences[i].Wait();
-		OutData[i-1].BuildKdTree();
-		CollisionDiscard(TempData[i-1], InData[i].Radius, OutData[i].Points, OutData,i);
-	}
-
-	for (int i = 0; i < InData.Num() - 1; i++)
-	{
-		OutData[i].CleanKdTree();
-	}
 }
 void UReaTimeScatterLibrary::ConvertToTransform(FVector2D InBottomLeft, FVector2D InTopRight, FVector2D OutBottomLeft, FVector2D OutTopRight, const TArray<FScatterPointCloud>& InData, TArray<FTransform>& OutData)
 {
@@ -302,4 +455,43 @@ void UReaTimeScatterLibrary::ConvertToTransform(FVector2D InBottomLeft, FVector2
 			OutData[Index++].SetScale3D(FVector(tree.Radius));
 		}
 	}
+}
+struct TempTest
+{
+	uint32 X;
+	uint32 Y;
+};
+
+void UReaTimeScatterLibrary::JumpFlood(
+	UObject* WorldContextObject,
+	UTextureRenderTarget2D* InputSeed, 
+	UTextureRenderTarget2D* InputStepRT, 
+	UTextureRenderTarget2D* OutputStepRT,
+	UTextureRenderTarget2D* OutputSDF,
+	float LengthScale)
+{
+	check(IsInGameThread());
+
+
+	/*FRHITexture* InputSeedResource = InputSeed->TextureReference.TextureReferenceRHI->GetTextureReference()->GetReferencedTexture();
+	FTextureRenderTargetResource* InputStepRTResource = InputStepRT->GameThread_GetRenderTargetResource();
+	FTextureRenderTargetResource* OutputStepRTResource = OutputStepRT->GameThread_GetRenderTargetResource();
+	FTextureRenderTargetResource* OutputSDFResource = OutputSDF->GameThread_GetRenderTargetResource();
+	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)
+	(
+		[InputSeedResource, InputStepRTResource, OutputStepRTResource, OutputSDFResource, LengthScale, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		{
+			JumpFlood_RenderThread
+			(
+				RHICmdList,
+				InputSeedResource,
+				InputStepRTResource,
+				OutputStepRTResource,
+				OutputSDFResource,
+				LengthScale,
+				FeatureLevel
+			);
+		}
+	);*/
 }
