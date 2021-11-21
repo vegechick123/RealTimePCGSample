@@ -24,5 +24,11 @@
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit"
 		}
-	]
+	],	
+   "Plugins": [                       
+     {                                
+       "Name": "Water",  
+       "Enabled": true                
+     }                                
+   ] 
 }

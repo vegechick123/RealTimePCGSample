@@ -23,6 +23,14 @@
 		{
 			"Name": "RealTimePCGFoliage",
 			"Enabled": true
+		},
+		{
+			"Name": "Water",
+			"Enabled": true
+		},
+		{
+			"Name": "RenderDocPlugin",
+			"Enabled": true
 		}
 	]
 }

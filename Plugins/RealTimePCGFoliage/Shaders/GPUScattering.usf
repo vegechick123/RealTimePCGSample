@@ -63,7 +63,7 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
         res.LocationX = pos.x;
         res.LocationY = pos.y;
         OutputPointCloud[curindex] = res;          
-        OutputSDF[sdfSize * uv] = RadiusScale*100;
+        OutputSDF[sdfSize * uv] = 100*RadiusScale;
     }
     
     

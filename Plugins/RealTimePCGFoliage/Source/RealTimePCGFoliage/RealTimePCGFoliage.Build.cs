@@ -44,6 +44,9 @@ public class RealTimePCGFoliage : ModuleRules
 				"LevelEditor",
 				"Foliage",
 				"RealTimeScattering",
+				"RHI",
+				"Renderer",
+				"RenderCore",
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

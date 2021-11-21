@@ -110,5 +110,8 @@ public:
 	}
 
 };
+
+#undef NUM_THREADS_PER_GROUP_DIMENSION
+
 #undef LOCTEXT_NAMESPACE
 

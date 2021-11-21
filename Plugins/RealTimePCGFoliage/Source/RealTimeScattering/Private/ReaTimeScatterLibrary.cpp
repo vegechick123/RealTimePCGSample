@@ -5,8 +5,10 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "GPUScatteringCS.h"
 #include "JumpFloodCS.h"
+#include "UAVCleanCS.h"
 #include "RenderGraphUtils.h"
 #include "Async/ParallelFor.h"
+#include "ClearQuad.h"
 #include "KdTree.h"
 
 void FScatterPointCloud::BuildKdTree()
@@ -74,11 +76,19 @@ void UReaTimeScatterLibrary::RealTImeScatter(const TArray<FColor>& ColorData, FI
 	
 
 }
+void CleanUAV_RenderThread(FUnorderedAccessViewRHIRef UAV,float Value, ERHIFeatureLevel::Type FeatureLevel)
+{
+	/*TShaderMapRef<FUAVCleanCS>UAVCleanCS(GetGlobalShaderMap(FeatureLevel));
+	FUAVCleanCS::FParameters Params;
+	Params.Texture = UAV;
+	Params.Value = Value;
+	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);*/
+}
 static void RealTImeScatterGPU_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FRHITexture2D* DensityTexture,
 	FRHITexture2D* InputSDFTexture,
-	FRHITexture2D* SDFSeedTexture,
+	FUnorderedAccessViewRHIRef SDFSeedUAV,
 	const FScatterPattern& Pattern,
 	FVector4 Rect,
 	float Ratio,
@@ -111,8 +121,6 @@ static void RealTImeScatterGPU_RenderThread(
 	FRHIResourceCreateInfo CreateInfo;
 	CreateInfo.ResourceArray = &bufferData;
 		
-	FUnorderedAccessViewRHIRef SDFSeedUAV = RHICreateUnorderedAccessView(SDFSeedTexture);
-
 	FStructuredBufferRHIRef  InstanceCountBuffer = RHICreateStructuredBuffer(sizeof(uint32), sizeof(uint32) * 1, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
 	FUnorderedAccessViewRHIRef InstanceCountBufferUAV = RHICreateUnorderedAccessView(InstanceCountBuffer, true, false);
 	Params.InstanceCountBuffer = InstanceCountBufferUAV;
@@ -151,7 +159,7 @@ static void RealTImeScatterGPU_RenderThread(
 	
 	double end1 = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("ReadBackCount executed in %f seconds."), end1 - start);
-
+	       
 	RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
 	if (Count != 0)
 	{
@@ -266,11 +274,33 @@ void ScatterFoliagePass_RenderThread(
 	FIntPoint TexSize = DensityTexture->GetSizeXY();
 
 	FRHIResourceCreateInfo CreateInfo;
-	FRHITexture2D* SDFSeedTexture = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FTexture2DRHIRef SDFSeedTexture = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FUnorderedAccessViewRHIRef SDFSeedTextureUAV = RHICreateUnorderedAccessView(SDFSeedTexture);
 	FTexture2DRHIRef OutputSDFRT = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
 	FUnorderedAccessViewRHIRef OutputSDFRTUAV = RHICreateUnorderedAccessView(OutputSDFRT);
-	RHICmdList.ClearUAVFloat(OutputSDFRTUAV, FVector4(1e16, 1e16, 1e16, 1e16));
+	
+	//float Value = 0.5;
+	FIntVector GroupCount= FIntVector(TexSize.X/8, TexSize.Y / 8,1);
+	TShaderMapRef<FUAVCleanCS>UAVCleanCS(GetGlobalShaderMap(FeatureLevel));
+	FUAVCleanCS::FParameters Params;
+	Params.Texture = OutputSDFRTUAV;
+	Params.Value = 1e16;
+	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
+	Params.Texture = SDFSeedTextureUAV;
+	Params.Value = 0;
+	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
+	//CleanUAV_RenderThread(OutputSDFRTUAV, 0.5, FeatureLevel);
+	
+	//ClearUAVShader_T<
+	//ClearUAVShader_T<EClearReplacementResourceType::Texture2D, 1, false>(RHICmdList, OutputSDFRTUAV, TexSize.X, TexSize.Y,1, &Value , EClearReplacementValueType::Float);
+	//RHICmdList.ClearUAVFloat
+	//FRHIRenderPassInfo RPInfo(SDFSeedTexture, ERenderTargetActions::DontLoad_Store);
+	//TransitionRenderPassTargets(RHICmdList, RPInfo);
+	//RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearRT"));
+	//DrawClearQuad(RHICmdList, FLinearColor(1,0,0,0));
+	//RHICmdList.EndRenderPass();
 
+	//RHICmdList.Transition(FRHITransitionInfo(OutputSDFRTUAV, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute|));
 	for (int i = 0; i < InData.Num(); i++)
 	{
 		float Ratio=InData[i].Ratio;
@@ -280,7 +310,7 @@ void ScatterFoliagePass_RenderThread(
 			RHICmdList,
 			DensityTexture,
 			OutputSDFRT,
-			SDFSeedTexture,
+			SDFSeedTextureUAV,
 			Pattern,
 			Rect,
 			Ratio,
@@ -298,6 +328,12 @@ void ScatterFoliagePass_RenderThread(
 			FeatureLevel
 		);
 	}
+	//FRHICopyTextureInfo CopyInfo;
+	//CopyInfo.Size.X = TexSize.X;
+	//CopyInfo.Size.Y = TexSize.Y;
+	//CopyInfo.Size.Z = 1;
+	//RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
+
 	FRHICopyTextureInfo CopyInfo;
 	CopyInfo.Size.X = TexSize.X;
 	CopyInfo.Size.Y = TexSize.Y;
@@ -400,8 +436,6 @@ void UReaTimeScatterLibrary::ScatterWithCollision(
 	UObject* WorldContextObject,
 	UTextureRenderTarget2D* Mask,
 	UTextureRenderTarget2D* DistanceSeed, 
-	UTextureRenderTarget2D* JFART1, 
-	UTextureRenderTarget2D* JFART2,
 	UTextureRenderTarget2D* OutputDistanceField, 
 	FVector2D BottomLeft, FVector2D TopRight, 
 	const FScatterPattern& Pattern, 

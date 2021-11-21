@@ -8,8 +8,8 @@
 // Sets default values
 APCGFoliageManager::APCGFoliageManager()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	UClass* BPClass =LoadClass<UTextureCollectComponentBase>(nullptr,TEXT("Blueprint'/RealTimePCGFoliage/BluePrint/TextureCollectComponent.TextureCollectComponent_C'"));
+	TextureCollectComponent = (UTextureCollectComponentBase*)CreateDefaultSubobject(TEXT("TextureCollectComp"), UTextureCollectComponentBase::StaticClass(), BPClass, false, false);
 }
 
 // Called when the game starts or when spawned
@@ -43,6 +43,10 @@ bool APCGFoliageManager::GenerateProceduralContent()
 {
 #if WITH_EDITOR
 	double start = FPlatformTime::Seconds();
+
+	Density = GetOrCreateTransientRenderTarget2D(Density,TEXT("Density"), TexSize, ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black);
+
+	TextureCollectComponent->RenderDensityTexture(Mask,Density,DensityCalculateMaterial);
 
 	TArray<FDesiredFoliageInstance> OutFoliageInstances;
 
@@ -91,7 +95,7 @@ bool APCGFoliageManager::ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutF
 	double start = FPlatformTime::Seconds();
 
 	
-	UReaTimeScatterLibrary::ScatterWithCollision(this,Mask, DistanceSeed,JFART1, JFART2,DistanceField,- Size/2, Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
+	UReaTimeScatterLibrary::ScatterWithCollision(this, Density, DistanceSeed,DistanceField,- Size/2, Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
 	double end1 = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("ScatterWithCollision executed in %f seconds."), end1 - start);
 	
@@ -146,3 +150,44 @@ void APCGFoliageManager::CleanPreviousFoliage(const TArray<FDesiredFoliageInstan
 	}
 }
 
+UTextureRenderTarget2D* APCGFoliageManager::GetOrCreateTransientRenderTarget2D(UTextureRenderTarget2D* InRenderTarget, FName InRenderTargetName, const FIntPoint& InSize, ETextureRenderTargetFormat InFormat,
+	const FLinearColor& InClearColor, bool bInAutoGenerateMipMaps)
+{
+	EPixelFormat PixelFormat = GetPixelFormatFromRenderTargetFormat(InFormat);
+	if ((InSize.X <= 0)
+		|| (InSize.Y <= 0)
+		|| (PixelFormat == EPixelFormat::PF_Unknown))
+	{
+		return nullptr;
+	}
+
+	if (IsValid(InRenderTarget))
+	{
+		if ((InRenderTarget->SizeX == InSize.X)
+			&& (InRenderTarget->SizeY == InSize.Y)
+			&& (InRenderTarget->GetFormat() == PixelFormat) // Watch out : GetFormat() returns a EPixelFormat (non-class enum), so we can't compare with a ETextureRenderTargetFormat
+			&& (InRenderTarget->ClearColor == InClearColor)
+			&& (InRenderTarget->bAutoGenerateMips == bInAutoGenerateMipMaps))
+		{
+			return InRenderTarget;
+		}
+	}
+
+	UTextureRenderTarget2D* NewRenderTarget2D = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UTextureRenderTarget2D::StaticClass(), InRenderTargetName));
+	check(NewRenderTarget2D);
+	NewRenderTarget2D->RenderTargetFormat = InFormat;
+	NewRenderTarget2D->ClearColor = InClearColor;
+	NewRenderTarget2D->bAutoGenerateMips = bInAutoGenerateMipMaps;
+	NewRenderTarget2D->InitAutoFormat(InSize.X, InSize.Y);
+	NewRenderTarget2D->UpdateResourceImmediate(true);
+
+	// Flush RHI thread after creating texture render target to make sure that RHIUpdateTextureReference is executed before doing any rendering with it
+	// This makes sure that Value->TextureReference.TextureReferenceRHI->GetReferencedTexture() is valid so that FUniformExpressionSet::FillUniformBuffer properly uses the texture for rendering, instead of using a fallback texture
+	ENQUEUE_RENDER_COMMAND(FlushRHIThreadToUpdateTextureRenderTargetReference)(
+		[](FRHICommandListImmediate& RHICmdList)
+		{
+			RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+		});
+
+	return NewRenderTarget2D;
+}

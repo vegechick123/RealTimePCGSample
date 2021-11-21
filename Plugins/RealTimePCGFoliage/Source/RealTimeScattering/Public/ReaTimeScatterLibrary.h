@@ -124,7 +124,7 @@ public :
 	UFUNCTION(BlueprintCallable)
 	static void CollisionDiscard(const TArray<FVector2D>& InData, float InRadius, TArray<FVector2D>& OutData, const TArray<FScatterPointCloud>& Tree,int Count);
 	UFUNCTION(BlueprintCallable)
-	static void ScatterWithCollision(UObject* WorldContextObject, UTextureRenderTarget2D* Mask, UTextureRenderTarget2D* DistanceSeed,UTextureRenderTarget2D* JFART1,UTextureRenderTarget2D* JFART2, UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FCollisionPass>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU);
+	static void ScatterWithCollision(UObject* WorldContextObject, UTextureRenderTarget2D* Mask, UTextureRenderTarget2D* DistanceSeed, UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FCollisionPass>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU);
 	UFUNCTION(BlueprintCallable)
 	static void ConvertToTransform(FVector2D InBottomLeft, FVector2D InTopRight, FVector2D OutBottomLeft, FVector2D OutTopRight, const TArray<FScatterPointCloud>& InData, TArray<FTransform>& OutData);
 	UFUNCTION(BlueprintCallable)

@@ -6,8 +6,10 @@
 #include "GameFramework/Actor.h"
 #include "Landscape.h"
 #include "InstancedFoliage.h"
+#include "TextureCollectComponentBase.h"
 #include "ReaTimeScatterLibrary.h"
 #include "GameFramework/Volume.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 #include "PCGFoliageManager.generated.h"
 
@@ -37,19 +39,27 @@ public:
 	FGuid ProceduralGuid;
 	UPROPERTY(EditAnywhere)
 	ALandscape* Landscape;
+	UPROPERTY(VisibleAnywhere)
+	UTextureCollectComponentBase* TextureCollectComponent;
+	
+
+	//UPROPERTY(EditAnywhere)
+	//class AWaterBrushManager* WaterBrushManager;
+	UPROPERTY(EditAnywhere, meta = (MakeStructureDefaultValue = "256,256"))
+	FIntPoint TexSize;
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* Mask;
+	UPROPERTY(VisibleAnywhere, Transient)
+	UTextureRenderTarget2D* Density;
+	UPROPERTY(EditAnywhere)
+	UMaterialInterface* DensityCalculateMaterial;
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* DistanceSeed;
-	UPROPERTY(EditAnywhere)
-	UTextureRenderTarget2D* JFART1;
-	UPROPERTY(EditAnywhere)
-	UTextureRenderTarget2D* JFART2;
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* DistanceField;
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* PaintMaterial;
-
+	
 	UPROPERTY(EditAnywhere)
 	TArray<FPCGFoliageType> PCGFoliageTypes;
 protected:
@@ -71,4 +81,5 @@ public:
 	void ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
 	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances);
+	UTextureRenderTarget2D* GetOrCreateTransientRenderTarget2D(UTextureRenderTarget2D* InRenderTarget, FName InRenderTargetName, const FIntPoint& InSize, ETextureRenderTargetFormat InFormat, const FLinearColor& InClearColor, bool bInAutoGenerateMipMaps=false);
 };

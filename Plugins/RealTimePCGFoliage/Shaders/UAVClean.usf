@@ -1,0 +1,11 @@
+#include "/Engine/Public/Platform.ush"
+RWTexture2D<float> Texture;
+float Value;
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void MainComputeShader(uint3 id : SV_DispatchThreadID)
+{
+        
+    Texture[id.xy] = Value;
+  
+}
