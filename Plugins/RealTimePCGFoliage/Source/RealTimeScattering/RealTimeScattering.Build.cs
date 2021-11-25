@@ -42,6 +42,8 @@ public class RealTimeScattering : ModuleRules
 				"RenderCore",
 				"Projects",
 				"RHI",
+				"Water",
+				"WaterEditor"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

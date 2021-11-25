@@ -3,12 +3,14 @@
 
 #include "PCGFoliageManager.h"
 #include "Components/BrushComponent.h"
-
+#include "UObject/ConstructorHelpers.h"
 #include "RealTimePCGFoliageEdMode.h"
+#include "RealTimePCGUtils.h"
 // Sets default values
 APCGFoliageManager::APCGFoliageManager()
 {
-	UClass* BPClass =LoadClass<UTextureCollectComponentBase>(nullptr,TEXT("Blueprint'/RealTimePCGFoliage/BluePrint/TextureCollectComponent.TextureCollectComponent_C'"));
+	//ConstructorHelpers::FClassFinder<UTextureCollectComponentBase> BPClass(TEXT("Blueprint'/RealTimePCGFoliage/BluePrint/Demo.Demo_C'"));
+	UClass* BPClass =LoadClass<UTextureCollectComponentBase>(GetWorld(),TEXT("Blueprint'/RealTimePCGFoliage/BluePrint/TextureCollectComponent.TextureCollectComponent_C'"));
 	TextureCollectComponent = (UTextureCollectComponentBase*)CreateDefaultSubobject(TEXT("TextureCollectComp"), UTextureCollectComponentBase::StaticClass(), BPClass, false, false);
 }
 
@@ -28,6 +30,7 @@ void APCGFoliageManager::Tick(float DeltaTime)
 void APCGFoliageManager::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
+	FillBiomeData();
 	if (Landscape != nullptr)
 	{
 		SetActorScale3D(Landscape->GetActorScale3D());
@@ -44,7 +47,7 @@ bool APCGFoliageManager::GenerateProceduralContent()
 #if WITH_EDITOR
 	double start = FPlatformTime::Seconds();
 
-	Density = GetOrCreateTransientRenderTarget2D(Density,TEXT("Density"), TexSize, ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black);
+	Density = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(Density,TEXT("Density"), TexSize, ETextureRenderTargetFormat::RTF_R16f,FLinearColor::Black);
 
 	TextureCollectComponent->RenderDensityTexture(Mask,Density,DensityCalculateMaterial);
 
@@ -149,45 +152,33 @@ void APCGFoliageManager::CleanPreviousFoliage(const TArray<FDesiredFoliageInstan
 		FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(GetWorld(),ProceduralGuid,FoliageType);
 	}
 }
-
-UTextureRenderTarget2D* APCGFoliageManager::GetOrCreateTransientRenderTarget2D(UTextureRenderTarget2D* InRenderTarget, FName InRenderTargetName, const FIntPoint& InSize, ETextureRenderTargetFormat InFormat,
-	const FLinearColor& InClearColor, bool bInAutoGenerateMipMaps)
+void APCGFoliageManager::FillBiomeData()
 {
-	EPixelFormat PixelFormat = GetPixelFormatFromRenderTargetFormat(InFormat);
-	if ((InSize.X <= 0)
-		|| (InSize.Y <= 0)
-		|| (PixelFormat == EPixelFormat::PF_Unknown))
+	if (Biomes.Num() > BiomeData.Num())
 	{
-		return nullptr;
+		BiomeData.Add(FBiomeData());
 	}
-
-	if (IsValid(InRenderTarget))
-	{
-		if ((InRenderTarget->SizeX == InSize.X)
-			&& (InRenderTarget->SizeY == InSize.Y)
-			&& (InRenderTarget->GetFormat() == PixelFormat) // Watch out : GetFormat() returns a EPixelFormat (non-class enum), so we can't compare with a ETextureRenderTargetFormat
-			&& (InRenderTarget->ClearColor == InClearColor)
-			&& (InRenderTarget->bAutoGenerateMips == bInAutoGenerateMipMaps))
-		{
-			return InRenderTarget;
-		}
-	}
-
-	UTextureRenderTarget2D* NewRenderTarget2D = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UTextureRenderTarget2D::StaticClass(), InRenderTargetName));
-	check(NewRenderTarget2D);
-	NewRenderTarget2D->RenderTargetFormat = InFormat;
-	NewRenderTarget2D->ClearColor = InClearColor;
-	NewRenderTarget2D->bAutoGenerateMips = bInAutoGenerateMipMaps;
-	NewRenderTarget2D->InitAutoFormat(InSize.X, InSize.Y);
-	NewRenderTarget2D->UpdateResourceImmediate(true);
-
-	// Flush RHI thread after creating texture render target to make sure that RHIUpdateTextureReference is executed before doing any rendering with it
-	// This makes sure that Value->TextureReference.TextureReferenceRHI->GetReferencedTexture() is valid so that FUniformExpressionSet::FillUniformBuffer properly uses the texture for rendering, instead of using a fallback texture
-	ENQUEUE_RENDER_COMMAND(FlushRHIThreadToUpdateTextureRenderTargetReference)(
-		[](FRHICommandListImmediate& RHICmdList)
-		{
-			RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
-		});
-
-	return NewRenderTarget2D;
 }
+void APCGFoliageManager::SaveBiomeData()
+{
+	for (FBiomeData& Data : BiomeData)
+	{
+		Data.SaveRenderTargetData();
+	}
+}
+
+void APCGFoliageManager::LoadBiomeData()
+{
+	
+	for (FBiomeData& Data: BiomeData)
+	{
+		Data.CreateRenderTarget(TexSize);
+		Data.LoadRenderTargetData();
+	}
+}
+
+void APCGFoliageManager::Serialize(FStructuredArchiveRecord Record)
+{
+	Super::Serialize(Record);
+}
+

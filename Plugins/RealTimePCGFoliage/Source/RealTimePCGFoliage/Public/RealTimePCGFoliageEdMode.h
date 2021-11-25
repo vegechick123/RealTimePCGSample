@@ -66,7 +66,7 @@ public:
 	
 	FFoliageUISettings UISettings;
 
-	APCGFoliageManager* PCGFoliageManager;
+	TWeakObjectPtr<APCGFoliageManager> PCGFoliageManager;
 
 	class UMaterialInstanceDynamic* PaintMID;
 

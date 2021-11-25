@@ -22,7 +22,7 @@
 #include "LandscapeHeightfieldCollisionComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "Components/BrushComponent.h"
-
+#include "RealTimePCGUtils.h"
 const FEditorModeID FRealTimePCGFoliageEdMode::EM_RealTimePCGFoliageEdModeId = TEXT("EM_RealTimePCGFoliageEdMode");
 static FName FoliageBrushHighlightColorParamName("HighlightColor");
 
@@ -108,7 +108,7 @@ void FRealTimePCGFoliageEdMode::Enter()
 	{
 		PCGFoliageManager = *ActorIter;		
 	}
-	PaintMID = UMaterialInstanceDynamic::Create(PCGFoliageManager->PaintMaterial, PCGFoliageManager);
+	PaintMID = UMaterialInstanceDynamic::Create(PCGFoliageManager->PaintMaterial, nullptr);
 
 	UE_LOG(LogTemp, Warning, TEXT("The Actor's name is %s"), *PCGFoliageManager->GetName());
 	//TArray<AActor*> PCGFoliageManager;
@@ -465,11 +465,12 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	FDrawToRenderTargetContext Context;
 	SetPaintMaterial();
 	UTextureRenderTarget2D* RT = GetEditedRT();
+	const FScopedTransaction Transaction(FText::FromString("Draw Mask"));
 	RT->Modify();
 	//UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(PCGFoliageManager,GetEditedRT(),Canvas,Size,Context);
-	UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager,RT, PaintMID);
-
-	PCGFoliageManager->GenerateProceduralContent();
+	UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager.Get(),RT, PaintMID);
+	PCGFoliageManager->SaveBiomeData();
+	//PCGFoliageManager->GenerateProceduralContent();
 	//UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(PCGFoliageManager, Context);
 	
 }
@@ -501,13 +502,14 @@ ALandscape* FRealTimePCGFoliageEdMode::GetLandscape() const
 
 UTextureRenderTarget2D* FRealTimePCGFoliageEdMode::GetEditedRT() const
 {
-	return PCGFoliageManager->Mask;
+	if (PCGFoliageManager->BiomeData[0].PlacementRTData.RenderTarget == nullptr)
+		PCGFoliageManager->LoadBiomeData();
+	return PCGFoliageManager->BiomeData[0].PlacementRTData.RenderTarget;
 }
 
 void FRealTimePCGFoliageEdMode::SetPaintMaterial()
 {
 	ALandscape* Land = GetLandscape();
-	;
 	FVector LocalCoord = Land->GetTransform().InverseTransformPosition(BrushLocation);
 	LocalCoord.X /= 505;
 	LocalCoord.Y /= 505;

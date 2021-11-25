@@ -17,7 +17,7 @@
 		{
 			"Name": "RealTimePCGFoliage",
 			"Type": "Editor",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostEngineInit"
 		},
 		{
 			"Name": "RealTimeScattering",

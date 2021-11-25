@@ -9,6 +9,8 @@
 #include "TextureCollectComponentBase.h"
 #include "ReaTimeScatterLibrary.h"
 #include "GameFramework/Volume.h"
+#include "Biome.h"
+#include "Species.h"
 #include "Engine/TextureRenderTarget2D.h"
 
 #include "PCGFoliageManager.generated.h"
@@ -23,6 +25,9 @@ public:
 	UPROPERTY(EditAnywhere)
 	FCollisionPass CollisionPass;
 };
+/**
+ *
+ */
 
 UCLASS()
 class REALTIMEPCGFOLIAGE_API APCGFoliageManager : public AActor
@@ -42,11 +47,12 @@ public:
 	UPROPERTY(VisibleAnywhere)
 	UTextureCollectComponentBase* TextureCollectComponent;
 	
-
-	//UPROPERTY(EditAnywhere)
-	//class AWaterBrushManager* WaterBrushManager;
 	UPROPERTY(EditAnywhere, meta = (MakeStructureDefaultValue = "256,256"))
 	FIntPoint TexSize;
+	UPROPERTY(EditAnywhere)
+	TArray<UBiome*> Biomes;
+	UPROPERTY(VisibleAnywhere)
+	TArray<FBiomeData> BiomeData;
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* Mask;
 	UPROPERTY(VisibleAnywhere, Transient)
@@ -81,5 +87,8 @@ public:
 	void ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
 	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances);
-	UTextureRenderTarget2D* GetOrCreateTransientRenderTarget2D(UTextureRenderTarget2D* InRenderTarget, FName InRenderTargetName, const FIntPoint& InSize, ETextureRenderTargetFormat InFormat, const FLinearColor& InClearColor, bool bInAutoGenerateMipMaps=false);
+	void FillBiomeData();
+	void SaveBiomeData();
+	void LoadBiomeData();
+	void Serialize(FStructuredArchiveRecord Record) override;
 };

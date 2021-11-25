@@ -41,6 +41,7 @@ public class RealTimePCGFoliage : ModuleRules
 				"InputCore",
 				"Landscape",
 				"UnrealEd",
+				"AssetTools",
 				"LevelEditor",
 				"Foliage",
 				"RealTimeScattering",
