@@ -3,6 +3,7 @@
 #include "RealTimePCGFoliage.h"
 #include "RealTimePCGFoliageEdMode.h"
 #include "RealTimePCGAssetTypeActions.h"
+#include "PCGFoliageEditorCommands.h"
 #define LOCTEXT_NAMESPACE "FRealTimePCGFoliageModule"
 
 EAssetTypeCategories::Type FRealTimePCGFoliageModule::AssetCategory;
@@ -16,6 +17,7 @@ void FRealTimePCGFoliageModule::RegisterAssetTypeActionIntoCategories(IAssetTool
 void FRealTimePCGFoliageModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+	FPCGFoliageEditorCommands::Register();
 	FEditorModeRegistry::Get().RegisterMode<FRealTimePCGFoliageEdMode>(FRealTimePCGFoliageEdMode::EM_RealTimePCGFoliageEdModeId, LOCTEXT("RealTimePCGFoliageEdModeName", "RealTimePCGFoliageEdMode"), FSlateIcon(), true);
 
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();

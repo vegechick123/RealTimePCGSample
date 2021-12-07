@@ -14,8 +14,7 @@ UCLASS()
 class REALTIMEPCGFOLIAGE_API USpecies : public UObject
 {
 	GENERATED_BODY()
-	UPROPERTY(Transient, VisibleAnywhere)
-	UTextureRenderTarget2D* PlacementRT;
+public:
 	UPROPERTY(EditAnywhere)
 	TArray<UFoliageType*> FoliageTypes;
 	UPROPERTY(EditAnywhere)

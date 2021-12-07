@@ -35,6 +35,7 @@ public class RealTimePCGFoliage : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
+				"EditorStyle",
 				"Engine",
 				"Slate",
 				"SlateCore",

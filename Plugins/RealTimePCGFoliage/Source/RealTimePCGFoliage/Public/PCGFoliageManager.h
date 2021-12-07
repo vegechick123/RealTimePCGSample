@@ -52,8 +52,11 @@ public:
 	UPROPERTY(EditAnywhere)
 	TArray<UBiome*> Biomes;
 	UPROPERTY(VisibleAnywhere)
-	TArray<FBiomeData> BiomeData;
-	UPROPERTY(EditAnywhere)
+	TArray<FBiomeRenderTargetData> BiomeData;
+	
+	
+	
+	UPROPERTY(EditAnywhere, Transient)
 	UTextureRenderTarget2D* Mask;
 	UPROPERTY(VisibleAnywhere, Transient)
 	UTextureRenderTarget2D* Density;
@@ -65,7 +68,8 @@ public:
 	UTextureRenderTarget2D* DistanceField;
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* PaintMaterial;
-	
+	UPROPERTY(VisibleAnywhere)
+	UMaterialInterface* DebugPaintMaterial;
 	UPROPERTY(EditAnywhere)
 	TArray<FPCGFoliageType> PCGFoliageTypes;
 protected:
@@ -87,8 +91,7 @@ public:
 	void ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
 	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances);
+	UFUNCTION(CallInEditor)
 	void FillBiomeData();
-	void SaveBiomeData();
-	void LoadBiomeData();
-	void Serialize(FStructuredArchiveRecord Record) override;
+
 };

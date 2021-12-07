@@ -42,3 +42,14 @@ struct FBiomeData
 	void CreateRenderTarget(FIntPoint TexSize);
 	void LoadRenderTargetData();
 };
+USTRUCT()
+struct FBiomeRenderTargetData
+{
+	GENERATED_BODY()
+	UPROPERTY(VisibleAnywhere)
+	UTexture2D* PlacementRT;
+	UPROPERTY(VisibleAnywhere)
+	TArray<UTexture2D*> CleanRTs;
+	FBiomeRenderTargetData();
+	FBiomeRenderTargetData(UObject* Outer, UBiome* Biome, FIntPoint TexSize);
+};

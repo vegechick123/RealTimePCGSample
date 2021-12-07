@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "EdMode.h"
+#include "PCGFoliageEditorCommands.h"
 #include "PCGFoliageManager.h"
 
 // Current user settings in Foliage UI
@@ -21,11 +22,13 @@ struct FFoliageUISettings
 	void SetRadius(float InRadius) {  Radius = InRadius; }
 	float GetPaintDensity() const { return PaintDensity; }
 	void SetPaintDensity(float InPaintDensity) { PaintDensity = InPaintDensity; }
-private:	
+
 	bool bPaintToolSelected;
+	bool bSpeciesEraseSelected;
 
 	float Radius;
 	float PaintDensity;
+	
 };
 struct FFoliagePaintingGeometryFilter
 {
@@ -34,16 +37,6 @@ struct FFoliagePaintingGeometryFilter
 	bool bAllowBSP;
 	bool bAllowFoliage;
 	bool bAllowTranslucent;
-
-	//FFoliagePaintingGeometryFilter(const FFoliageUISettings& InUISettings)
-	//	: bAllowLandscape(InUISettings.bFilterLandscape)
-	//	, bAllowStaticMesh(InUISettings.bFilterStaticMesh)
-	//	, bAllowBSP(InUISettings.bFilterBSP)
-	//	, bAllowFoliage(InUISettings.bFilterFoliage)
-	//	, bAllowTranslucent(InUISettings.bFilterTranslucent)
-	//{
-	//}
-
 	FFoliagePaintingGeometryFilter()
 		: bAllowLandscape(true)
 		, bAllowStaticMesh(false)
@@ -56,6 +49,7 @@ struct FFoliagePaintingGeometryFilter
 	bool operator() (const UPrimitiveComponent* Component) const;
 };
 
+
 class FRealTimePCGFoliageEdMode : public FEdMode
 {
 public:
@@ -64,12 +58,16 @@ public:
 	FRealTimePCGFoliageEdMode();
 	virtual ~FRealTimePCGFoliageEdMode();
 	
+
 	FFoliageUISettings UISettings;
+
+	/** Command list lives here so that the key bindings on the commands can be processed in the viewport. */
+	TSharedPtr<FUICommandList> UICommandList;
 
 	TWeakObjectPtr<APCGFoliageManager> PCGFoliageManager;
 
 	class UMaterialInstanceDynamic* PaintMID;
-
+	UTextureRenderTarget2D* PaintRTCache;
 	bool bBrushTraceValid;
 	FVector BrushLocation;
 	FVector BrushNormal;
@@ -180,13 +178,19 @@ public:
 	/** Set the brush mesh opacity */
 	void SetBrushOpacity(const float InOpacity);
 
+	void SetSpeciesErase();
+
+	bool GetSpeciesErase()const;
 	float GetPaintingBrushRadius() const;
 
 	ALandscape* GetLandscape() const;
 
-	UTextureRenderTarget2D* GetEditedRT()const;
+	UTexture2D* GetEditedTexture();
 
 	void SetPaintMaterial();
+	
+	void BindCommands();
+	static void CopyRenderTargetToTexture(UTexture2D* InTexture,UTextureRenderTarget2D* InRenderTarget);
 	
 	static void CleanProcedualFoliageInstance(UWorld* InWorld, FGuid Guid,const UFoliageType* FoliageType);
 
@@ -199,4 +203,10 @@ public:
 	static void CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter);
 
 	APCGFoliageManager* GetPCGFoliageManager(bool bCreateIfNone = false);
+
+	UBiome* GetEditedBiome();
+	USpecies* GetEditedSpecies();
+	UTexture2D* GetEditedSpeciesCleanTexture();
+	FBiomeRenderTargetData* GetEditedBiomeData();
+
 };

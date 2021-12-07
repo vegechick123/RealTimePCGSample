@@ -69,7 +69,7 @@ FRealTimePCGFoliageEdMode::FRealTimePCGFoliageEdMode()
 	SphereBrushComponent->SetMaterial(0, BrushMID);
 	SphereBrushComponent->SetAbsolute(true, true, true);
 	SphereBrushComponent->CastShadow = false;
-
+	PaintRTCache = nullptr;
 	bBrushTraceValid = false;
 	BrushLocation = FVector::ZeroVector;
 
@@ -91,6 +91,8 @@ void FRealTimePCGFoliageEdMode::AddReferencedObjects(FReferenceCollector& Collec
 
 	Collector.AddReferencedObject(SphereBrushComponent);
 	Collector.AddReferencedObject(PaintMID);
+	if(PaintRTCache!=nullptr)
+		Collector.AddReferencedObject(PaintRTCache);
 }
 void FRealTimePCGFoliageEdMode::Enter()
 {
@@ -103,6 +105,9 @@ void FRealTimePCGFoliageEdMode::Enter()
 	{
 		Toolkit = MakeShareable(new FRealTimePCGFoliageEdModeToolkit);
 		Toolkit->Init(Owner->GetToolkitHost());
+
+		UICommandList = Toolkit->GetToolkitCommands();
+		BindCommands();
 	}
 	for (TActorIterator<APCGFoliageManager> ActorIter(GetWorld()); ActorIter; ++ActorIter)
 	{
@@ -464,13 +469,52 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	FVector2D Size;
 	FDrawToRenderTargetContext Context;
 	SetPaintMaterial();
-	UTextureRenderTarget2D* RT = GetEditedRT();
+	
 	const FScopedTransaction Transaction(FText::FromString("Draw Mask"));
-	RT->Modify();
-	//UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(PCGFoliageManager,GetEditedRT(),Canvas,Size,Context);
-	UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager.Get(),RT, PaintMID);
-	PCGFoliageManager->SaveBiomeData();
-	//PCGFoliageManager->GenerateProceduralContent();
+	
+	PaintRTCache = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(PaintRTCache, "PaintRTCache", PCGFoliageManager->TexSize, RTF_R8,FLinearColor::Black);	
+	if (UISettings.bSpeciesEraseSelected)
+	{
+		
+		UTexture2D* PaintTexture = GetEditedSpeciesCleanTexture();
+		if (!PaintTexture)
+			return;
+		PCGFoliageManager->DebugPaintMaterial = PaintMID;
+		PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
+		PaintMID->SetTextureParameterValue("Texture", PaintTexture);
+		UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager.Get(), PaintRTCache, PaintMID);
+
+		FlushRenderingCommands();
+		CopyRenderTargetToTexture(PaintTexture, PaintRTCache);
+	}
+	else
+	{
+		FBiomeRenderTargetData* EditedBiomeData = GetEditedBiomeData();
+		if (!EditedBiomeData)
+			return;
+		UTexture2D* PaintTexture = EditedBiomeData->PlacementRT;
+		for (FBiomeRenderTargetData& BiomeData : PCGFoliageManager->BiomeData)
+		{
+			if (PaintTexture == BiomeData.PlacementRT)
+			{
+				PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
+			}
+			else
+			{
+				PaintMID->SetVectorParameterValue("Color", FLinearColor::Black);
+			}
+			PaintMID->SetTextureParameterValue("Texture", BiomeData.PlacementRT);
+			UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager.Get(), PaintRTCache, PaintMID);
+
+			FlushRenderingCommands();
+			CopyRenderTargetToTexture(BiomeData.PlacementRT, PaintRTCache);
+		}
+		
+	}
+	//*RT = PaintRTCache->ConstructTexture2D(PCGFoliageManager.Get(),MakeUniqueObjectName(GetTransientPackage(),UTexture2D::StaticClass(),FName("PaintTexture")).ToString(), RF_NoFlags);
+	PCGFoliageManager->DebugPaintMaterial = PaintMID;
+	PCGFoliageManager->Modify();
+	PCGFoliageManager->GenerateProceduralContent();
 	//UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(PCGFoliageManager, Context);
 	
 }
@@ -489,6 +533,14 @@ void FRealTimePCGFoliageEdMode::SetBrushOpacity(const float InOpacity)
 	static FName OpacityParamName("OpacityAmount");
 	BrushMID->SetScalarParameterValue(OpacityParamName, InOpacity);
 }
+void FRealTimePCGFoliageEdMode::SetSpeciesErase()
+{
+	UISettings.bSpeciesEraseSelected = !UISettings.bSpeciesEraseSelected;
+}
+bool FRealTimePCGFoliageEdMode::GetSpeciesErase()const
+{
+	return UISettings.bSpeciesEraseSelected;
+}
 float FRealTimePCGFoliageEdMode::GetPaintingBrushRadius() const
 {
 	float Radius = UISettings.GetRadius();
@@ -500,11 +552,18 @@ ALandscape* FRealTimePCGFoliageEdMode::GetLandscape() const
 	return PCGFoliageManager->Landscape;
 }
 
-UTextureRenderTarget2D* FRealTimePCGFoliageEdMode::GetEditedRT() const
+UTexture2D*  FRealTimePCGFoliageEdMode::GetEditedTexture()
 {
-	if (PCGFoliageManager->BiomeData[0].PlacementRTData.RenderTarget == nullptr)
-		PCGFoliageManager->LoadBiomeData();
-	return PCGFoliageManager->BiomeData[0].PlacementRTData.RenderTarget;
+	//(FRealTimePCGFoliageEdModeToolkit*)(Toolkit.Get())->;
+	if (GetSpeciesErase())
+	{
+		return GetEditedSpeciesCleanTexture();
+	}
+	else
+	{
+		return GetEditedBiomeData()->PlacementRT;
+	}
+	
 }
 
 void FRealTimePCGFoliageEdMode::SetPaintMaterial()
@@ -516,8 +575,27 @@ void FRealTimePCGFoliageEdMode::SetPaintMaterial()
 	PaintMID->SetScalarParameterValue("Radius", UISettings.GetRadius()/505/100);
 	PaintMID->SetVectorParameterValue("Center", LocalCoord);
 	PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
-	UE_LOG(LogTemp, Warning, TEXT("Radius %f"), UISettings.GetRadius() / 505/100);
-	//UE_LOG(LogTemp, Warning, TEXT("Hit %f %f %f"), BrushLocation.X, BrushLocation.Y, BrushLocation.Z);
+	if (GetSpeciesErase())
+		PaintMID->SetScalarParameterValue("FallOff", 1);
+	else
+		PaintMID->SetScalarParameterValue("FallOff", 0.001);
+}
+void FRealTimePCGFoliageEdMode::BindCommands()
+{
+	const FPCGFoliageEditorCommands& Commands = FPCGFoliageEditorCommands::Get();
+
+	UICommandList->MapAction(
+		Commands.SetSpeciesErase,
+		FExecuteAction::CreateRaw(this, &FRealTimePCGFoliageEdMode::SetSpeciesErase),
+		FCanExecuteAction(),
+		FIsActionChecked::CreateRaw(this,&FRealTimePCGFoliageEdMode::GetSpeciesErase)
+	);
+}
+
+void FRealTimePCGFoliageEdMode::CopyRenderTargetToTexture(UTexture2D* InTexture, UTextureRenderTarget2D* InRenderTarget)
+{
+	InRenderTarget->UpdateTexture2D(InTexture,ETextureSourceFormat::TSF_G8);
+	InTexture->PostEditChange();
 }
 
 void FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(UWorld* InWorld,FGuid Guid,const UFoliageType* FoliageType)
@@ -677,17 +755,52 @@ void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWo
 
 APCGFoliageManager* FRealTimePCGFoliageEdMode::GetPCGFoliageManager(bool bCreateIfNone)
 {
-
-	APCGFoliageManager* Result;
-	for (TActorIterator<APCGFoliageManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	if (!PCGFoliageManager.IsValid())
 	{
-		Result = Cast<APCGFoliageManager>(*ActorItr);
-		if (Result)
+		APCGFoliageManager* Result;
+		for (TActorIterator<APCGFoliageManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
 		{
-			return Result;
+			Result = Cast<APCGFoliageManager>(*ActorItr);
+			if (Result)
+			{
+				PCGFoliageManager = Result;
+				break;				
+			}
 		}
 	}
-	return nullptr;
+	return PCGFoliageManager.Get();
 
+}
+
+UBiome* FRealTimePCGFoliageEdMode::GetEditedBiome()
+{
+	return ((FRealTimePCGFoliageEdModeToolkit*)Toolkit.Get())->GetSelectBiome();
+	//return GetPCGFoliageManager()->Biomes[0];
+}
+
+USpecies* FRealTimePCGFoliageEdMode::GetEditedSpecies()
+{
+	return ((FRealTimePCGFoliageEdModeToolkit*)Toolkit.Get())->GetSelectSpecies();
+}
+
+UTexture2D* FRealTimePCGFoliageEdMode::GetEditedSpeciesCleanTexture()
+{
+	USpecies* EditedSpecies = GetEditedSpecies();
+	if (!EditedSpecies)
+		return nullptr;
+	UBiome* Biome = GetEditedBiome();
+	if (!Biome)
+		return nullptr;
+	int32 Index = Biome->Species.IndexOfByKey(EditedSpecies);
+	return GetEditedBiomeData()->CleanRTs[Index];
+}
+
+FBiomeRenderTargetData* FRealTimePCGFoliageEdMode::GetEditedBiomeData()
+{
+	UBiome* EditedBiome=GetEditedBiome();
+	if (!EditedBiome)
+		return nullptr;
+	int32 Index = GetPCGFoliageManager()->Biomes.IndexOfByKey(EditedBiome);
+	return &GetPCGFoliageManager()->BiomeData[Index];
 }
 

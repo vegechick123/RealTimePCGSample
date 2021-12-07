@@ -154,31 +154,13 @@ void APCGFoliageManager::CleanPreviousFoliage(const TArray<FDesiredFoliageInstan
 }
 void APCGFoliageManager::FillBiomeData()
 {
-	if (Biomes.Num() > BiomeData.Num())
+	BiomeData.Empty();
+	for (UBiome* Biome : Biomes)
 	{
-		BiomeData.Add(FBiomeData());
+		BiomeData.Add(FBiomeRenderTargetData(this, Biome, TexSize));
 	}
-}
-void APCGFoliageManager::SaveBiomeData()
-{
-	for (FBiomeData& Data : BiomeData)
-	{
-		Data.SaveRenderTargetData();
-	}
+	Modify();
 }
 
-void APCGFoliageManager::LoadBiomeData()
-{
-	
-	for (FBiomeData& Data: BiomeData)
-	{
-		Data.CreateRenderTarget(TexSize);
-		Data.LoadRenderTargetData();
-	}
-}
 
-void APCGFoliageManager::Serialize(FStructuredArchiveRecord Record)
-{
-	Super::Serialize(Record);
-}
 
