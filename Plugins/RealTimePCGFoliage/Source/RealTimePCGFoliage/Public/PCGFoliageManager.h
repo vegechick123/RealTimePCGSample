@@ -23,7 +23,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	UFoliageType* FoliageType;
 	UPROPERTY(EditAnywhere)
-	FCollisionPass CollisionPass;
+	FSpeciesProxy CollisionPass;
 };
 /**
  *
@@ -52,7 +52,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	TArray<UBiome*> Biomes;
 	UPROPERTY(VisibleAnywhere)
-	TArray<FBiomeRenderTargetData> BiomeData;
+	TArray<FBiomeData> BiomeData;
 	
 	
 	
@@ -81,17 +81,14 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	
-	/**
-	 * Runs the procedural foliage simulation to generate a list of desired instances to spawn.
-	 * @return True if the simulation succeeded
-	 */
-	TArray<FCollisionPass> GetCollisionPasses();
+	TArray<FSpeciesProxy> CreateSpeciesProxy(UBiome* InBiome);
 	bool GenerateProceduralContent();
 	bool ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances);
-	void ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
+	void ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
 	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances);
 	UFUNCTION(CallInEditor)
 	void FillBiomeData();
+	void BiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances);
 
 };

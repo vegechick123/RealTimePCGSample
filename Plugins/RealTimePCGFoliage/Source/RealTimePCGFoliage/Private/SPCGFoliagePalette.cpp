@@ -109,7 +109,7 @@ void SPCGFoliagePalette::RefreshSpeceiesModels()
 		return;
 
 	TArray<USpecies*>& Species = EditedBiome->Species;
-	TArray<UTexture2D*>& CleanRTs = EdMode->GetEditedBiomeData()->CleanRTs;
+	TArray<UTexture2D*>& CleanRTs = EdMode->GetEditedBiomeData()->CleanMaps;
 	int Num = FMath::Max(CleanRTs.Num(), Species.Num());
 	for (int i = 0; i < Num; i++)
 	{

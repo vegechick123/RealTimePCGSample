@@ -5,6 +5,9 @@
 #include "Components/BrushComponent.h"
 #include "UObject/ConstructorHelpers.h"
 #include "RealTimePCGFoliageEdMode.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Kismet/KismetRenderingLibrary.h"
 #include "RealTimePCGUtils.h"
 // Sets default values
 APCGFoliageManager::APCGFoliageManager()
@@ -76,12 +79,15 @@ bool APCGFoliageManager::GenerateProceduralContent()
 	return false;
 }
 
-TArray<FCollisionPass> APCGFoliageManager::GetCollisionPasses()
+TArray<FSpeciesProxy> APCGFoliageManager::CreateSpeciesProxy(UBiome* InBiome)
 {
-	TArray<FCollisionPass> Result;
-	for (int i = 0; i < PCGFoliageTypes.Num(); i++)
+	TArray<FSpeciesProxy> Result;
+	for (USpecies* CurrentSpecies :InBiome->Species)
 	{
-		Result.Add(PCGFoliageTypes[i].CollisionPass);
+		FSpeciesProxy Proxy;
+		Proxy.Radius = CurrentSpecies->Radius;
+		Proxy.Ratio = CurrentSpecies->Ratio;
+		Result.Add(Proxy);
 	}
 	return Result;
 
@@ -89,34 +95,35 @@ TArray<FCollisionPass> APCGFoliageManager::GetCollisionPasses()
 bool APCGFoliageManager::ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances)
 {
 	FScatterPattern Pattern = UReaTimeScatterLibrary::GetDefaultPattern();
-	TArray<FCollisionPass> CollisionPasses = GetCollisionPasses();
+	TArray<FSpeciesProxy> CollisionPasses; //= CreateSpeciesProxy();
 	FVector Scale = Landscape->GetTransform().GetScale3D()*500;
 	FVector2D Size = FVector2D(Scale.X, Scale.Y);
 	TArray<FScatterPointCloud> ScatterPointCloud;
 	TArray<FDesiredFoliageInstance> OutInstances;
 
+	BiomeGeneratePipeline(Biomes[0], BiomeData[0], OutFoliageInstances);
 	double start = FPlatformTime::Seconds();
 
 	
-	UReaTimeScatterLibrary::ScatterWithCollision(this, Density, DistanceSeed,DistanceField,- Size/2, Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
+	//UReaTimeScatterLibrary::ScatterWithCollision(this, Density,DistanceField,- Size/2, Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
 	double end1 = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("ScatterWithCollision executed in %f seconds."), end1 - start);
 	
 	FTransform WorldTM;
-	ConvertToFoliageInstance(ScatterPointCloud,WorldTM,2000,OutFoliageInstances);
+	//ConvertToFoliageInstance(ScatterPointCloud,WorldTM,2000,OutFoliageInstances);
 	double end2 = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("ConvertToFoliageInstance executed in %f seconds."), end2 - end1);
 	
 	return true;
 }
 
-void APCGFoliageManager::ConvertToFoliageInstance(const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutInstances) const
+void APCGFoliageManager::ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutInstances) const
 {
 
 	for (int i =0;i < ScatterPointCloud.Num();i++)
 	{
 		const FScatterPointCloud& Points = ScatterPointCloud[i];
-
+		USpecies* CurrentSpecies = InBiome->Species[i];
 		for (const FScatterPoint& Instance : Points.ScatterPoints)
 		{
 			FVector StartRay = FVector(Instance.LocationX, Instance.LocationY, 0) + WorldTM.GetLocation();
@@ -124,10 +131,10 @@ void APCGFoliageManager::ConvertToFoliageInstance(const TArray<FScatterPointClou
 			FVector EndRay = StartRay;
 			EndRay.Z -= (HalfHeight * 2.f + 10.f);	//add 10cm to bottom position of raycast. This is needed because volume is usually placed directly on geometry and then you get precision issues
 
-			FDesiredFoliageInstance* DesiredInst = new (OutInstances)FDesiredFoliageInstance(StartRay, EndRay, Points.Radius);
+			FDesiredFoliageInstance* DesiredInst = new (OutInstances)FDesiredFoliageInstance(StartRay, EndRay, CurrentSpecies->Radius);
 			DesiredInst->Rotation = FQuat();
 			DesiredInst->ProceduralGuid = ProceduralGuid;
-			DesiredInst->FoliageType = PCGFoliageTypes[i].FoliageType;
+			DesiredInst->FoliageType = CurrentSpecies->FoliageTypes[0];
 			DesiredInst->Age = 0;
 			DesiredInst->TraceRadius = 100;
 			DesiredInst->ProceduralVolumeBodyInstance = nullptr;
@@ -157,9 +164,39 @@ void APCGFoliageManager::FillBiomeData()
 	BiomeData.Empty();
 	for (UBiome* Biome : Biomes)
 	{
-		BiomeData.Add(FBiomeRenderTargetData(this, Biome, TexSize));
+		BiomeData.Add(FBiomeData(this, Biome, TexSize));
 	}
 	Modify();
+}
+
+void APCGFoliageManager::BiomeGeneratePipeline(UBiome* InBiome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances)
+{
+	InBiomeData.FillDensityMaps();
+	for (int i = 0; i < InBiome->Species.Num(); i++)
+	{
+		UMaterialInstanceDynamic* DensityCaculateMID = UMaterialInstanceDynamic::Create(InBiome->Species[i]->DensityCalculateMaterial,GetTransientPackage());
+		
+		TextureCollectComponent->SetUpMID(DensityCaculateMID);		
+		DensityCaculateMID->SetTextureParameterValue("Placement", InBiomeData.PlacementMap); 		
+		DensityCaculateMID->SetTextureParameterValue("Clean", InBiomeData.CleanMaps[i]);
+		UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, InBiomeData.DensityMaps[i], DensityCaculateMID);
+	}
+	FlushRenderingCommands();
+	TArray<FSpeciesProxy>  SpeciesProxys = CreateSpeciesProxy(InBiome);
+
+	FScatterPattern Pattern = UReaTimeScatterLibrary::GetDefaultPattern();
+	TArray<FSpeciesProxy> CollisionPasses = CreateSpeciesProxy(InBiome);
+	FVector Scale = Landscape->GetTransform().GetScale3D() * 500;
+	FVector2D Size = FVector2D(Scale.X, Scale.Y);
+	TArray<FScatterPointCloud> ScatterPointCloud;
+	ScatterPointCloud.AddDefaulted(CollisionPasses.Num());
+	TArray<FDesiredFoliageInstance> OutInstances;
+		
+	
+	UReaTimeScatterLibrary::RealTImeScatterGPU(this, InBiomeData.DensityMaps, DistanceField, -Size / 2, Size / 2, Pattern, CollisionPasses, ScatterPointCloud, false);
+	
+	FTransform WorldTM;
+	ConvertToFoliageInstance(InBiome,ScatterPointCloud, WorldTM, 2000, OutFoliageInstances);
 }
 
 

@@ -18,6 +18,8 @@ public:
 	UTextureCollectComponentBase();
 	UFUNCTION(BlueprintImplementableEvent)
 	void RenderDensityTexture(UTextureRenderTarget2D* InPlacement, UTextureRenderTarget2D* OutDensity,UMaterialInterface* DensityMaterial);
+	UFUNCTION(BlueprintImplementableEvent)
+	void SetUpMID(UMaterialInstanceDynamic* DensityMID);
 protected:
 
 

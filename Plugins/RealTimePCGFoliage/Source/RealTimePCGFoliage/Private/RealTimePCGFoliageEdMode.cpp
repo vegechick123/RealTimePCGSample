@@ -489,13 +489,13 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	}
 	else
 	{
-		FBiomeRenderTargetData* EditedBiomeData = GetEditedBiomeData();
+		FBiomeData* EditedBiomeData = GetEditedBiomeData();
 		if (!EditedBiomeData)
 			return;
-		UTexture2D* PaintTexture = EditedBiomeData->PlacementRT;
-		for (FBiomeRenderTargetData& BiomeData : PCGFoliageManager->BiomeData)
+		UTexture2D* PaintTexture = EditedBiomeData->PlacementMap;
+		for (FBiomeData& BiomeData : PCGFoliageManager->BiomeData)
 		{
-			if (PaintTexture == BiomeData.PlacementRT)
+			if (PaintTexture == BiomeData.PlacementMap)
 			{
 				PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
 			}
@@ -503,11 +503,11 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 			{
 				PaintMID->SetVectorParameterValue("Color", FLinearColor::Black);
 			}
-			PaintMID->SetTextureParameterValue("Texture", BiomeData.PlacementRT);
+			PaintMID->SetTextureParameterValue("Texture", BiomeData.PlacementMap);
 			UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager.Get(), PaintRTCache, PaintMID);
 
 			FlushRenderingCommands();
-			CopyRenderTargetToTexture(BiomeData.PlacementRT, PaintRTCache);
+			CopyRenderTargetToTexture(BiomeData.PlacementMap, PaintRTCache);
 		}
 		
 	}
@@ -561,7 +561,7 @@ UTexture2D*  FRealTimePCGFoliageEdMode::GetEditedTexture()
 	}
 	else
 	{
-		return GetEditedBiomeData()->PlacementRT;
+		return GetEditedBiomeData()->PlacementMap;
 	}
 	
 }
@@ -792,10 +792,10 @@ UTexture2D* FRealTimePCGFoliageEdMode::GetEditedSpeciesCleanTexture()
 	if (!Biome)
 		return nullptr;
 	int32 Index = Biome->Species.IndexOfByKey(EditedSpecies);
-	return GetEditedBiomeData()->CleanRTs[Index];
+	return GetEditedBiomeData()->CleanMaps[Index];
 }
 
-FBiomeRenderTargetData* FRealTimePCGFoliageEdMode::GetEditedBiomeData()
+FBiomeData* FRealTimePCGFoliageEdMode::GetEditedBiomeData()
 {
 	UBiome* EditedBiome=GetEditedBiome();
 	if (!EditedBiome)

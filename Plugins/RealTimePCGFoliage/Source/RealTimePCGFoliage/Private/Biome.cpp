@@ -4,68 +4,15 @@
 #include "Biome.h"
 #include "RealTimePCGUtils.h"
 
-FRenderTargetData::FRenderTargetData()
-{
-}
-
-void FRenderTargetData::SaveRenderTargetData()
-{
-	if (RenderTarget != nullptr)
-	{
-		Data.Empty();
-		RealTimePCGUtils::SaveDataToArray(RenderTarget, Data);
-	}
-}
-
-void FRenderTargetData::LoadDataToRenderTarget()
-{
-	if (RenderTarget != nullptr)
-	{
-		FIntPoint TexSize = FIntPoint(RenderTarget->SizeX, RenderTarget->SizeY);
-		if(TexSize.X*TexSize.Y==Data.Num())
-		RealTimePCGUtils::ReadDataToRenderTarget(RenderTarget, Data);
-	}
-}
-
 FBiomeData::FBiomeData()
 {
 }
 
-void FBiomeData::SaveRenderTargetData()
-{
-	PlacementRTData.SaveRenderTargetData();
-	for (FRenderTargetData& RenderTargetData : CleanRTData)
-	{
-		RenderTargetData.SaveRenderTargetData();
-	}
-}
-
-void FBiomeData::CreateRenderTarget(FIntPoint TexSize)
-{
-	PlacementRTData.RenderTarget=RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(PlacementRTData.RenderTarget,"PlacementRT",TexSize,ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black);
-	for (FRenderTargetData& RenderTargetData : CleanRTData)
-	{
-		RenderTargetData.RenderTarget = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(RenderTargetData.RenderTarget, "CleanRT", TexSize, ETextureRenderTargetFormat::RTF_R32f, FLinearColor::Black);
-	}
-}
-
-void FBiomeData::LoadRenderTargetData()
-{
-	PlacementRTData.LoadDataToRenderTarget();
-	for (FRenderTargetData& RenderTargetData : CleanRTData)
-	{
-		RenderTargetData.LoadDataToRenderTarget();
-	}
-}
-
-FBiomeRenderTargetData::FBiomeRenderTargetData()
-{
-}
-
-FBiomeRenderTargetData::FBiomeRenderTargetData(UObject* Outer,UBiome* Biome, FIntPoint TexSize)
+FBiomeData::FBiomeData(UObject* Outer,UBiome* Biome, FIntPoint InTexSize)
 {
 	//getName
-	auto CreateRenderTarget = [TexSize,Outer](FName Name)
+	TexSize = InTexSize;
+	auto CreateTexture = [this,Outer](FName Name)
 	{
 		UTexture2D* NewTexture = NewObject<UTexture2D>(Outer, MakeUniqueObjectName(GetTransientPackage(), UTexture2D::StaticClass(), Name));
 		
@@ -83,9 +30,19 @@ FBiomeRenderTargetData::FBiomeRenderTargetData(UObject* Outer,UBiome* Biome, FIn
 		return NewTexture;
 	};
 
-	PlacementRT = CreateRenderTarget(FName(Biome->GetName() + "Placement"));
+	PlacementMap = CreateTexture(FName(Biome->GetName() + "Placement"));
 	for (int i = 0; i < Biome->Species.Num(); i++)
-		CleanRTs.Add(CreateRenderTarget(FName(Biome->GetName() + "CleanRT" + FString::FromInt(i))));
+		CleanMaps.Add(CreateTexture(FName(Biome->GetName() + "CleanRT" + FString::FromInt(i))));
 
 
+}
+
+void FBiomeData::FillDensityMaps()
+{
+
+
+	for (int i = DensityMaps.Num(); i < CleanMaps.Num(); i++)
+	{
+		DensityMaps.Add(RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr, "DensityMap", TexSize,ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black));
+	}
 }

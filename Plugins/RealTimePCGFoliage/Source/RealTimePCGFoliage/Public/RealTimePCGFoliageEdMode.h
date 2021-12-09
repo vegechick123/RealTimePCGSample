@@ -207,6 +207,6 @@ public:
 	UBiome* GetEditedBiome();
 	USpecies* GetEditedSpecies();
 	UTexture2D* GetEditedSpeciesCleanTexture();
-	FBiomeRenderTargetData* GetEditedBiomeData();
+	FBiomeData* GetEditedBiomeData();
 
 };

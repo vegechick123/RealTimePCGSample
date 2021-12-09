@@ -17,39 +17,18 @@ public:
 	TArray<USpecies*> Species;
 };
 USTRUCT()
-struct FRenderTargetData
-{
-	GENERATED_BODY()
-public:
-	UPROPERTY(Transient, VisibleAnywhere)
-	UTextureRenderTarget2D* RenderTarget;
-	UPROPERTY()
-	TArray<float> Data;
-	FRenderTargetData();
-	void SaveRenderTargetData();
-	void LoadDataToRenderTarget();
-};
-USTRUCT()
 struct FBiomeData
 {
 	GENERATED_BODY()
 	UPROPERTY(VisibleAnywhere)
-	FRenderTargetData PlacementRTData;
+	UTexture2D* PlacementMap;
+	UPROPERTY(VisibleAnywhere)
+	TArray<UTexture2D*> CleanMaps;
 	UPROPERTY()
-	TArray<FRenderTargetData> CleanRTData;
+	FIntPoint TexSize;
+	UPROPERTY(Transient,VisibleAnywhere)
+	TArray<UTextureRenderTarget2D*> DensityMaps;
 	FBiomeData();
-	void SaveRenderTargetData();
-	void CreateRenderTarget(FIntPoint TexSize);
-	void LoadRenderTargetData();
-};
-USTRUCT()
-struct FBiomeRenderTargetData
-{
-	GENERATED_BODY()
-	UPROPERTY(VisibleAnywhere)
-	UTexture2D* PlacementRT;
-	UPROPERTY(VisibleAnywhere)
-	TArray<UTexture2D*> CleanRTs;
-	FBiomeRenderTargetData();
-	FBiomeRenderTargetData(UObject* Outer, UBiome* Biome, FIntPoint TexSize);
+	FBiomeData(UObject* Outer, UBiome* Biome, FIntPoint InTexSize);
+	void FillDensityMaps();
 };
