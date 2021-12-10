@@ -54,7 +54,8 @@ public:
 	UPROPERTY(VisibleAnywhere)
 	TArray<FBiomeData> BiomeData;
 	
-	
+	UPROPERTY(VisibleAnywhere)
+	UMaterialInterface* PlacementCopyMaterial;
 	
 	UPROPERTY(EditAnywhere, Transient)
 	UTextureRenderTarget2D* Mask;

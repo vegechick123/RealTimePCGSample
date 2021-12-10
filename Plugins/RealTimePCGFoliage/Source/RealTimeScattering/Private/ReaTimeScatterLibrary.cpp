@@ -74,6 +74,7 @@ void CleanUAV_RenderThread(FUnorderedAccessViewRHIRef UAV,float Value, ERHIFeatu
 static void RealTImeScatterGPU_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FRHITexture2D* DensityTexture,
+	FRHITexture2D* PlacementSDFTexture,
 	FRHITexture2D* InputSDFTexture,
 	FUnorderedAccessViewRHIRef SDFSeedUAV,
 	const FScatterPattern& Pattern,
@@ -120,6 +121,7 @@ static void RealTImeScatterGPU_RenderThread(
 	Params.PatternSize = Pattern.Size;
 	Params.PatternPointNum = Pattern.PointCloud.Num();
 	Params.InputTexture = DensityTexture;
+	Params.PlacementSDF = PlacementSDFTexture;
 	Params.InputSDF = InputSDFTexture;
 	Params.OutputSDF = SDFSeedUAV;
 	Params.LinearSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
@@ -168,6 +170,7 @@ static void JumpFlood_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FRHITexture2D* InputSeedTexture,
 	FUnorderedAccessViewRHIRef OutputSDFRTUAV,
+	bool SubstractSeedRadius,
 	float LengthScale,
 	ERHIFeatureLevel::Type FeatureLevel)
 {
@@ -189,6 +192,7 @@ static void JumpFlood_RenderThread(
 	//JFAInit
 	JFAInitParams.InputSeed = InputSeedTexture;
 	JFAInitParams.OutputStepRT = PingPointRT1UAV;
+	JFAInitParams.Inverse = SubstractSeedRadius ? 0 : 1;
 	FIntVector GroupCount;
 	GroupCount.X = (TexSize.X - 1) / 8 + 1;
 	GroupCount.Y = (TexSize.Y - 1) / 8 + 1;
@@ -204,6 +208,7 @@ static void JumpFlood_RenderThread(
 	uint32 Step = FMath::Max(PingPointRT1->GetSizeX(), PingPointRT1->GetSizeY()) / 2;
 	bool PingPong = false;
 	JFAStepParams.InputSeed = InputSeedTexture;
+	JFAStepParams.SubstractSeedRadius = SubstractSeedRadius ? 1 : 0;
 	JFAStepParams.LengthScale = LengthScale;
 	while (Step >= 1)
 	{
@@ -232,14 +237,17 @@ static void JumpFlood_RenderThread(
 	else
 		JFASDFOutputParams.InputStepRT = PingPointRT2;
 	JFASDFOutputParams.OutputSDF = OutputSDFRTUAV;
+	JFASDFOutputParams.SubstractSeedRadius = SubstractSeedRadius?1:0;
 	JFASDFOutputParams.LengthScale = LengthScale;
 
 	FComputeShaderUtils::Dispatch(RHICmdList, JFASDFOutputCS, JFASDFOutputParams, GroupCount);
 
 	
 }
+
 void ScatterFoliagePass_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
+	FTextureRenderTargetResource* PlacementResources,
 	TArray<FTextureRenderTargetResource*> DensityResources,
 	FTextureRenderTargetResource* SDFResource,
 	const FScatterPattern& Pattern,
@@ -264,7 +272,9 @@ void ScatterFoliagePass_RenderThread(
 	FTexture2DRHIRef OutputSDFRT = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
 	FUnorderedAccessViewRHIRef OutputSDFRTUAV = RHICreateUnorderedAccessView(OutputSDFRT);
 	
-	//float Value = 0.5;
+	FTexture2DRHIRef PlacementSDFRT = RHICreateTexture2D(TexSize.X, TexSize.Y, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, CreateInfo);
+	FUnorderedAccessViewRHIRef PlacementSDFRTUAV = RHICreateUnorderedAccessView(PlacementSDFRT);
+
 	FIntVector GroupCount= FIntVector(TexSize.X/8, TexSize.Y / 8,1);
 	TShaderMapRef<FUAVCleanCS>UAVCleanCS(GetGlobalShaderMap(FeatureLevel));
 	FUAVCleanCS::FParameters Params;
@@ -274,26 +284,30 @@ void ScatterFoliagePass_RenderThread(
 	Params.Texture = SDFSeedTextureUAV;
 	Params.Value = 0;
 	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
-	//CleanUAV_RenderThread(OutputSDFRTUAV, 0.5, FeatureLevel);
-	
-	//ClearUAVShader_T<
-	//ClearUAVShader_T<EClearReplacementResourceType::Texture2D, 1, false>(RHICmdList, OutputSDFRTUAV, TexSize.X, TexSize.Y,1, &Value , EClearReplacementValueType::Float);
-	//RHICmdList.ClearUAVFloat
-	//FRHIRenderPassInfo RPInfo(SDFSeedTexture, ERenderTargetActions::DontLoad_Store);
-	//TransitionRenderPassTargets(RHICmdList, RPInfo);
-	//RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearRT"));
-	//DrawClearQuad(RHICmdList, FLinearColor(1,0,0,0));
-	//RHICmdList.EndRenderPass();
 
-	//RHICmdList.Transition(FRHITransitionInfo(OutputSDFRTUAV, ERHIAccess::UAVCompute, ERHIAccess::SRVCompute|));
+	Params.Texture = PlacementSDFRTUAV;
+	Params.Value = 1e16;
+	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
+	JumpFlood_RenderThread
+	(
+		RHICmdList,
+		PlacementResources->GetRenderTargetTexture(),
+		PlacementSDFRTUAV,
+		false,
+		Rect.Z - Rect.X,
+		FeatureLevel
+	);
 	for (int i = 0; i < InData.Num(); i++)
 	{
+	
+		//Generate Point Cloud Data
 		float Ratio=InData[i].Ratio;
 		float RadiusScale= InData[i].Radius;
 		RealTImeScatterGPU_RenderThread
 		(
 			RHICmdList,
 			DensityResources[i]->GetRenderTargetTexture(),
+			PlacementSDFRT,
 			OutputSDFRT,
 			SDFSeedTextureUAV,
 			Pattern,
@@ -304,29 +318,28 @@ void ScatterFoliagePass_RenderThread(
 			FeatureLevel,
 			OutputPointCloud[i].ScatterPoints
 		);
+		//Generate Collision SDF
 		JumpFlood_RenderThread
 		(
 			RHICmdList,
 			SDFSeedTexture,
 			OutputSDFRTUAV,
-			Rect.Z - Rect.X,
+			true,
+			Rect.Z - Rect.X,			
 			FeatureLevel
 		);
 	}
-	//FRHICopyTextureInfo CopyInfo;
-	//CopyInfo.Size.X = TexSize.X;
-	//CopyInfo.Size.Y = TexSize.Y;
-	//CopyInfo.Size.Z = 1;
-	//RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
 
 	FRHICopyTextureInfo CopyInfo;
 	CopyInfo.Size.X = TexSize.X;
 	CopyInfo.Size.Y = TexSize.Y;
 	CopyInfo.Size.Z = 1;
-	RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
+	RHICmdList.CopyTexture(PlacementSDFRT, SDFTexture, CopyInfo);
+	
 }
 void UReaTimeScatterLibrary::RealTImeScatterGPU(
 	UObject* WorldContextObject,
+	UTextureRenderTarget2D* PlacementMap,
 	TArray<UTextureRenderTarget2D*> DensityMaps,
 	UTextureRenderTarget2D* OutputDistanceField, 
 	FVector2D BottomLeft, 
@@ -338,22 +351,27 @@ void UReaTimeScatterLibrary::RealTImeScatterGPU(
 {
 	check(IsInGameThread());
 
+	FTextureRenderTargetResource* PlacementMapResource = PlacementMap->GameThread_GetRenderTargetResource();
+
 	TArray<FTextureRenderTargetResource*> DensityResources;
 	for(UTextureRenderTarget2D* DensityMap:DensityMaps)
 		DensityResources.Add(DensityMap->GameThread_GetRenderTargetResource());
-
+	
 	FTextureRenderTargetResource* OutputDistanceFieldResource = OutputDistanceField->GameThread_GetRenderTargetResource();
+
+	//PlacementMap->Resource->GetTexture2DResource
 	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
 	
 
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)
 		(
-			[DensityResources, OutputDistanceFieldResource, FeatureLevel,&Pattern,BottomLeft,TopRight, InData,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
+			[PlacementMapResource, DensityResources, OutputDistanceFieldResource, FeatureLevel,&Pattern,BottomLeft,TopRight, InData,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
 			{
 				ScatterFoliagePass_RenderThread
 				(
 					RHICmdList,
-					DensityResources,
+					PlacementMapResource,
+					DensityResources,					
 					OutputDistanceFieldResource,
 					Pattern,
 					FVector4(BottomLeft.X, BottomLeft.Y,TopRight.X, TopRight.Y),

@@ -15,6 +15,8 @@ APCGFoliageManager::APCGFoliageManager()
 	//ConstructorHelpers::FClassFinder<UTextureCollectComponentBase> BPClass(TEXT("Blueprint'/RealTimePCGFoliage/BluePrint/Demo.Demo_C'"));
 	UClass* BPClass =LoadClass<UTextureCollectComponentBase>(GetWorld(),TEXT("Blueprint'/RealTimePCGFoliage/BluePrint/TextureCollectComponent.TextureCollectComponent_C'"));
 	TextureCollectComponent = (UTextureCollectComponentBase*)CreateDefaultSubobject(TEXT("TextureCollectComp"), UTextureCollectComponentBase::StaticClass(), BPClass, false, false);
+	PlacementCopyMaterial = LoadObject<UMaterial>(this, TEXT("'/RealTimePCGFoliage/Material/M_PlacementCopy.M_PlacementCopy'"), nullptr, LOAD_None, nullptr);
+	//LoadObject<UMaterial>();
 }
 
 // Called when the game starts or when spawned
@@ -181,6 +183,11 @@ void APCGFoliageManager::BiomeGeneratePipeline(UBiome* InBiome, FBiomeData& InBi
 		DensityCaculateMID->SetTextureParameterValue("Clean", InBiomeData.CleanMaps[i]);
 		UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, InBiomeData.DensityMaps[i], DensityCaculateMID);
 	}
+	UMaterialInstanceDynamic* PlacementCopyMID = UMaterialInstanceDynamic::Create(PlacementCopyMaterial,GetTransientPackage());
+	UTextureRenderTarget2D* InitPlacementMap  =RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr,"InitPlacementMap",TexSize,ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black);
+	PlacementCopyMID->SetTextureParameterValue("Texture", InBiomeData.PlacementMap);
+	UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, InitPlacementMap, PlacementCopyMID);
+
 	FlushRenderingCommands();
 	TArray<FSpeciesProxy>  SpeciesProxys = CreateSpeciesProxy(InBiome);
 
@@ -193,7 +200,7 @@ void APCGFoliageManager::BiomeGeneratePipeline(UBiome* InBiome, FBiomeData& InBi
 	TArray<FDesiredFoliageInstance> OutInstances;
 		
 	
-	UReaTimeScatterLibrary::RealTImeScatterGPU(this, InBiomeData.DensityMaps, DistanceField, -Size / 2, Size / 2, Pattern, CollisionPasses, ScatterPointCloud, false);
+	UReaTimeScatterLibrary::RealTImeScatterGPU(this, InitPlacementMap,InBiomeData.DensityMaps, DistanceField, -Size / 2, Size / 2, Pattern, CollisionPasses, ScatterPointCloud, false);
 	
 	FTransform WorldTM;
 	ConvertToFoliageInstance(InBiome,ScatterPointCloud, WorldTM, 2000, OutFoliageInstances);

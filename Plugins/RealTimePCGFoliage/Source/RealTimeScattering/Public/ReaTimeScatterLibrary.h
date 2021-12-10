@@ -110,7 +110,7 @@ public :
 	UFUNCTION(BlueprintCallable)
 	static void RealTImeScatter(const TArray<FColor>& ColorData, FIntPoint TextureSize, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, TArray<FVector2D>& Result, float RadiusScale, float Ratio, bool FlipY);
 	UFUNCTION(BlueprintCallable)
-	static void RealTImeScatterGPU(UObject* WorldContextObject, TArray<UTextureRenderTarget2D*> DensityMaps, UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern,const TArray<FSpeciesProxy>& InData,	TArray<FScatterPointCloud>& Result ,bool FlipY);
+	static void RealTImeScatterGPU(UObject* WorldContextObject, UTextureRenderTarget2D* PlacementMap, TArray<UTextureRenderTarget2D*> DensityMaps, UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern,const TArray<FSpeciesProxy>& InData,	TArray<FScatterPointCloud>& Result ,bool FlipY);
 	UFUNCTION(BlueprintCallable)
 	static void ScatterWithCollision(UObject* WorldContextObject,TArray<UTextureRenderTarget2D*> DensityMaps,UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FSpeciesProxy>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU);	
 	UFUNCTION(BlueprintCallable)
