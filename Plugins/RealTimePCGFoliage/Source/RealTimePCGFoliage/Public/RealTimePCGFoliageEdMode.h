@@ -192,7 +192,7 @@ public:
 	void BindCommands();
 	static void CopyRenderTargetToTexture(UTexture2D* InTexture,UTextureRenderTarget2D* InRenderTarget);
 	
-	static void CleanProcedualFoliageInstance(UWorld* InWorld, FGuid Guid,const UFoliageType* FoliageType);
+	static void CleanProcedualFoliageInstance(UWorld* InWorld, FGuid Guid,const UFoliageType* FoliageType, FVector4 DirtyRect);
 
 	static void AddInstances(UWorld* InWorld, const TArray<FDesiredFoliageInstance>& DesiredInstances, const FFoliagePaintingGeometryFilter& OverrideGeometryFilter = FFoliagePaintingGeometryFilter(), bool InRebuildFoliageTree = true);
 

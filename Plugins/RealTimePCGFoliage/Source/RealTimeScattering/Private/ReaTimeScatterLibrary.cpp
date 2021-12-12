@@ -78,7 +78,8 @@ static void RealTImeScatterGPU_RenderThread(
 	FRHITexture2D* InputSDFTexture,
 	FUnorderedAccessViewRHIRef SDFSeedUAV,
 	const FScatterPattern& Pattern,
-	FVector4 Rect,
+	FVector4 TotalRect,
+	FVector4 DirtyRect,
 	float Ratio,
 	float RadiusScale,
 	bool FlipY,
@@ -88,11 +89,19 @@ static void RealTImeScatterGPU_RenderThread(
 {
 
 	check(IsInRenderingThread());
-	FVector2D Size = FVector2D(Rect.Z, Rect.W) - FVector2D(Rect.X, Rect.Y);
+	FVector2D TotalSize = FVector2D(TotalRect.Z, TotalRect.W) - FVector2D(TotalRect.X, TotalRect.Y);
+
 	FIntPoint TexSize = DensityTexture->GetSizeXY();
-	FVector2D Temp = Size / (Pattern.Size * RadiusScale);
+	FVector2D ScaledPatternSize = Pattern.Size * RadiusScale;
+	FVector2D Temp = TotalSize / ScaledPatternSize;
 	int PerPointsCnt = Pattern.PointCloud.Num();
 	FIntPoint CellNumber = FIntPoint(ceilf(Temp.X), ceilf(Temp.Y));
+	Temp = (FVector2D(DirtyRect.X, DirtyRect.Y) - FVector2D(TotalRect.X, TotalRect.Y)) / ScaledPatternSize;
+	FIntPoint StartCell = FIntPoint(floorf(Temp.X), floorf(Temp.Y));
+	Temp =  (FVector2D(DirtyRect.Z, DirtyRect.W) - FVector2D(TotalRect.X, TotalRect.Y)) / ScaledPatternSize;
+	FIntPoint EndCell = FIntPoint(ceilf(Temp.X), ceilf(Temp.Y));
+
+	FIntPoint DirtyCellNumber = EndCell - StartCell ;
 	int Total = CellNumber.X * CellNumber.Y;
 
 
@@ -125,7 +134,9 @@ static void RealTImeScatterGPU_RenderThread(
 	Params.InputSDF = InputSDFTexture;
 	Params.OutputSDF = SDFSeedUAV;
 	Params.LinearSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
-	Params.Rect = Rect;
+	Params.CenterOffset = StartCell;
+	Params.TotalRect = TotalRect;
+	Params.ClipRect = DirtyRect;
 	Params.Ratio = Ratio;
 	Params.RadiusScale = RadiusScale;
 	Params.FlipY = FlipY ? 1 : 0;
@@ -140,7 +151,7 @@ static void RealTImeScatterGPU_RenderThread(
 	FUnorderedAccessViewRHIRef OutputBufferUAV = RHICreateUnorderedAccessView(OutputBuffer, true, false);
 	Params.OutputPointCloud = OutputBufferUAV;
 
-	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(CellNumber.X, CellNumber.Y, 1));
+	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(DirtyCellNumber.X, DirtyCellNumber.Y, 1));
 
 	double start = FPlatformTime::Seconds();
 
@@ -251,7 +262,8 @@ void ScatterFoliagePass_RenderThread(
 	TArray<FTextureRenderTargetResource*> DensityResources,
 	FTextureRenderTargetResource* SDFResource,
 	const FScatterPattern& Pattern,
-	FVector4 Rect,
+	FVector4 TotalRect,
+	FVector4 DirtyRect,
 	const TArray<FSpeciesProxy>& InData,
 	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
@@ -288,13 +300,16 @@ void ScatterFoliagePass_RenderThread(
 	Params.Texture = PlacementSDFRTUAV;
 	Params.Value = 1e16;
 	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
+
+	float LengthScale = TotalRect.Z - TotalRect.X;
+
 	JumpFlood_RenderThread
 	(
 		RHICmdList,
 		PlacementResources->GetRenderTargetTexture(),
 		PlacementSDFRTUAV,
 		false,
-		Rect.Z - Rect.X,
+		LengthScale,
 		FeatureLevel
 	);
 	for (int i = 0; i < InData.Num(); i++)
@@ -311,7 +326,8 @@ void ScatterFoliagePass_RenderThread(
 			OutputSDFRT,
 			SDFSeedTextureUAV,
 			Pattern,
-			Rect,
+			TotalRect,
+			DirtyRect,
 			Ratio,
 			RadiusScale,
 			FlipY,
@@ -325,7 +341,7 @@ void ScatterFoliagePass_RenderThread(
 			SDFSeedTexture,
 			OutputSDFRTUAV,
 			true,
-			Rect.Z - Rect.X,			
+			LengthScale,
 			FeatureLevel
 		);
 	}
@@ -342,8 +358,8 @@ void UReaTimeScatterLibrary::RealTImeScatterGPU(
 	UTextureRenderTarget2D* PlacementMap,
 	TArray<UTextureRenderTarget2D*> DensityMaps,
 	UTextureRenderTarget2D* OutputDistanceField, 
-	FVector2D BottomLeft, 
-	FVector2D TopRight, 
+	FVector4 TotalRect, 
+	FVector4 DirtyRect,
 	const FScatterPattern& Pattern,
 	const TArray<FSpeciesProxy>& InData,
 	TArray<FScatterPointCloud>& Result, 
@@ -365,7 +381,7 @@ void UReaTimeScatterLibrary::RealTImeScatterGPU(
 
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)
 		(
-			[PlacementMapResource, DensityResources, OutputDistanceFieldResource, FeatureLevel,&Pattern,BottomLeft,TopRight, InData,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
+			[PlacementMapResource, DensityResources, OutputDistanceFieldResource, FeatureLevel,&Pattern, TotalRect, DirtyRect, InData,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
 			{
 				ScatterFoliagePass_RenderThread
 				(
@@ -374,7 +390,8 @@ void UReaTimeScatterLibrary::RealTImeScatterGPU(
 					DensityResources,					
 					OutputDistanceFieldResource,
 					Pattern,
-					FVector4(BottomLeft.X, BottomLeft.Y,TopRight.X, TopRight.Y),
+					TotalRect,
+					DirtyRect,
 					InData,
 					FlipY,
 					FeatureLevel,

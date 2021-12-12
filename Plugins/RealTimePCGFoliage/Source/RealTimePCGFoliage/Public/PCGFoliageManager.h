@@ -83,13 +83,14 @@ public:
 	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	
 	TArray<FSpeciesProxy> CreateSpeciesProxy(UBiome* InBiome);
-	bool GenerateProceduralContent();
-	bool ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances);
+	bool GenerateProceduralContent(bool bPartialUpdate = false, FVector2D DirtyCenter = FVector2D(0, 0),float DirtyRadius = 0);
+	//bool ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances, FVector2D DirtyCenter, float DirtyRadius);
 	void ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
-	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances);
+	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
 	UFUNCTION(CallInEditor)
 	void FillBiomeData();
-	void BiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances);
+	void BiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
+	FVector4 GetTotalRect();
 
 };

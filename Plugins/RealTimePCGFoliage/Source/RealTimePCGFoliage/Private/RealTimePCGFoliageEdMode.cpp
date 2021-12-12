@@ -459,19 +459,9 @@ void FRealTimePCGFoliageEdMode::PreApplyBrush()
 }
 void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient)
 {
-	ALandscape* Land = GetLandscape();
-	if (Land == nullptr)
-		return;
-	FVector LocalCoord = Land->GetTransform().InverseTransformPosition(BrushLocation);
-	LocalCoord.X /= 505;
-	LocalCoord.Y /= 505;
-	UCanvas* Canvas = nullptr;
-	FVector2D Size;
-	FDrawToRenderTargetContext Context;
 	SetPaintMaterial();
-	
 	const FScopedTransaction Transaction(FText::FromString("Draw Mask"));
-	
+	FVector4 DirtyRect = FVector4(BrushLocation.X - GetPaintingBrushRadius(), BrushLocation.Y - GetPaintingBrushRadius(), BrushLocation.X+GetPaintingBrushRadius(), BrushLocation.Y + GetPaintingBrushRadius());
 	PaintRTCache = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(PaintRTCache, "PaintRTCache", PCGFoliageManager->TexSize, RTF_R8,FLinearColor::Black);	
 	if (UISettings.bSpeciesEraseSelected)
 	{
@@ -511,11 +501,9 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 		}
 		
 	}
-	//*RT = PaintRTCache->ConstructTexture2D(PCGFoliageManager.Get(),MakeUniqueObjectName(GetTransientPackage(),UTexture2D::StaticClass(),FName("PaintTexture")).ToString(), RF_NoFlags);
 	PCGFoliageManager->DebugPaintMaterial = PaintMID;
 	PCGFoliageManager->Modify();
-	PCGFoliageManager->GenerateProceduralContent();
-	//UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(PCGFoliageManager, Context);
+	PCGFoliageManager->GenerateProceduralContent(true,FVector2D(BrushLocation.X, BrushLocation.Y), GetPaintingBrushRadius());
 	
 }
 
@@ -598,7 +586,7 @@ void FRealTimePCGFoliageEdMode::CopyRenderTargetToTexture(UTexture2D* InTexture,
 	InTexture->PostEditChange();
 }
 
-void FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(UWorld* InWorld,FGuid Guid,const UFoliageType* FoliageType)
+void FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(UWorld* InWorld,FGuid Guid,const UFoliageType* FoliageType,FVector4 DirtyRect)
 {
 
 	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InWorld->GetCurrentLevel());
@@ -608,8 +596,13 @@ void FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(UWorld* InWorld,FG
 		TArray<int32> InstancesToRemove;
 		for (int32 InstanceIdx = 0; InstanceIdx < Info->Instances.Num(); InstanceIdx++)
 		{
-			if (Info->Instances[InstanceIdx].ProceduralGuid == Guid)
+			FFoliageInstance Instance = Info->Instances[InstanceIdx];
+			if (Instance.ProceduralGuid == Guid)
 			{
+				if (Instance.Location.X < DirtyRect.X || Instance.Location.X >= DirtyRect.Z || Instance.Location.Y < DirtyRect.Y || Instance.Location.Y >= DirtyRect.W)
+				{
+					continue;
+				}
 				InstancesToRemove.Add(InstanceIdx);
 			}
 		}
