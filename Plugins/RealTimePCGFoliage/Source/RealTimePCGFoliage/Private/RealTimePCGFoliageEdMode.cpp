@@ -393,7 +393,14 @@ bool FRealTimePCGFoliageEdMode::InputKey(FEditorViewportClient* ViewportClient, 
 
 			bHandled = true;
 		}
-
+		if ((Key == EKeys::LeftShift || Key == EKeys::RightShift) && Event == IE_Released)
+		{
+			UISettings.IsInQuickEraseMode=false;
+		}
+		else if ((Key == EKeys::LeftShift || Key == EKeys::RightShift) && Event == IE_Pressed)
+		{
+			UISettings.IsInQuickEraseMode = true;
+		}
 
 		if (IsCtrlDown(Viewport))
 		{
@@ -463,14 +470,14 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	const FScopedTransaction Transaction(FText::FromString("Draw Mask"));
 	FVector4 DirtyRect = FVector4(BrushLocation.X - GetPaintingBrushRadius(), BrushLocation.Y - GetPaintingBrushRadius(), BrushLocation.X+GetPaintingBrushRadius(), BrushLocation.Y + GetPaintingBrushRadius());
 	PaintRTCache = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(PaintRTCache, "PaintRTCache", PCGFoliageManager->TexSize, RTF_R8,FLinearColor::Black);	
-	if (UISettings.bSpeciesEraseSelected)
+	if (UISettings.bPaintSpecies)
 	{
 		
 		UTexture2D* PaintTexture = GetEditedSpeciesCleanTexture();
 		if (!PaintTexture)
 			return;
 		PCGFoliageManager->DebugPaintMaterial = PaintMID;
-		PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
+		//PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
 		PaintMID->SetTextureParameterValue("Texture", PaintTexture);
 		UKismetRenderingLibrary::DrawMaterialToRenderTarget(PCGFoliageManager.Get(), PaintRTCache, PaintMID);
 
@@ -487,7 +494,7 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 		{
 			if (PaintTexture == BiomeData.PlacementMap)
 			{
-				PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
+				PaintMID->SetVectorParameterValue("Color", GetErase()?FLinearColor::Black:FLinearColor::Red);
 			}
 			else
 			{
@@ -521,14 +528,32 @@ void FRealTimePCGFoliageEdMode::SetBrushOpacity(const float InOpacity)
 	static FName OpacityParamName("OpacityAmount");
 	BrushMID->SetScalarParameterValue(OpacityParamName, InOpacity);
 }
-void FRealTimePCGFoliageEdMode::SetSpeciesErase()
+void FRealTimePCGFoliageEdMode::SetPaintBiome()
 {
-	UISettings.bSpeciesEraseSelected = !UISettings.bSpeciesEraseSelected;
+	UISettings.bPaintSpecies = false;
+	UISettings.bPaintBiome = true;
 }
-bool FRealTimePCGFoliageEdMode::GetSpeciesErase()const
+void FRealTimePCGFoliageEdMode::SetPaintSpecies()
 {
-	return UISettings.bSpeciesEraseSelected;
+	UISettings.bPaintBiome = false;
+	UISettings.bPaintSpecies = true;	
 }
+
+bool FRealTimePCGFoliageEdMode::GetPaintBiome()const
+{
+	return UISettings.bPaintBiome;
+}
+
+bool FRealTimePCGFoliageEdMode::GetPaintSpecies()const
+{
+	return UISettings.bPaintSpecies;
+}
+
+bool FRealTimePCGFoliageEdMode::GetErase() const
+{
+	return UISettings.IsInQuickEraseMode;
+}
+
 float FRealTimePCGFoliageEdMode::GetPaintingBrushRadius() const
 {
 	float Radius = UISettings.GetRadius();
@@ -543,7 +568,7 @@ ALandscape* FRealTimePCGFoliageEdMode::GetLandscape() const
 UTexture2D*  FRealTimePCGFoliageEdMode::GetEditedTexture()
 {
 	//(FRealTimePCGFoliageEdModeToolkit*)(Toolkit.Get())->;
-	if (GetSpeciesErase())
+	if (GetPaintSpecies())
 	{
 		return GetEditedSpeciesCleanTexture();
 	}
@@ -562,8 +587,12 @@ void FRealTimePCGFoliageEdMode::SetPaintMaterial()
 	LocalCoord.Y /= 505;
 	PaintMID->SetScalarParameterValue("Radius", UISettings.GetRadius()/505/100);
 	PaintMID->SetVectorParameterValue("Center", LocalCoord);
-	PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
-	if (GetSpeciesErase())
+	if(GetErase())
+		PaintMID->SetVectorParameterValue("Color", FLinearColor::Black);
+	else
+		PaintMID->SetVectorParameterValue("Color", FLinearColor::Red);
+
+	if (GetPaintSpecies())
 		PaintMID->SetScalarParameterValue("FallOff", 1);
 	else
 		PaintMID->SetScalarParameterValue("FallOff", 0.001);
@@ -571,12 +600,17 @@ void FRealTimePCGFoliageEdMode::SetPaintMaterial()
 void FRealTimePCGFoliageEdMode::BindCommands()
 {
 	const FPCGFoliageEditorCommands& Commands = FPCGFoliageEditorCommands::Get();
-
 	UICommandList->MapAction(
-		Commands.SetSpeciesErase,
-		FExecuteAction::CreateRaw(this, &FRealTimePCGFoliageEdMode::SetSpeciesErase),
+		Commands.SetPaintBiome,
+		FExecuteAction::CreateRaw(this, &FRealTimePCGFoliageEdMode::SetPaintBiome),
 		FCanExecuteAction(),
-		FIsActionChecked::CreateRaw(this,&FRealTimePCGFoliageEdMode::GetSpeciesErase)
+		FIsActionChecked::CreateRaw(this, &FRealTimePCGFoliageEdMode::GetPaintBiome)
+	);
+	UICommandList->MapAction(
+		Commands.SetPaintSpecies,
+		FExecuteAction::CreateRaw(this, &FRealTimePCGFoliageEdMode::SetPaintSpecies),
+		FCanExecuteAction(),
+		FIsActionChecked::CreateRaw(this,&FRealTimePCGFoliageEdMode::GetPaintSpecies)
 	);
 }
 

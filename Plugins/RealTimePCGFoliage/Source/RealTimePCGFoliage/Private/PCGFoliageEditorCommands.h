@@ -39,11 +39,7 @@ public:
 
 	/** Commands for the tools toolbar. */
 	TSharedPtr< FUICommandInfo > SetPaint;
-	TSharedPtr< FUICommandInfo > SetReapplySettings;
-	TSharedPtr< FUICommandInfo > SetSelect;
-	TSharedPtr< FUICommandInfo > SetLassoSelect;
-	TSharedPtr< FUICommandInfo > SetPaintBucket;
-
+	TSharedPtr< FUICommandInfo > SetErase;
 	/** Commands for the foliage item toolbar. */
 	TSharedPtr< FUICommandInfo > SetNoSettings;
 	TSharedPtr< FUICommandInfo > SetPaintSettings;
@@ -58,7 +54,8 @@ public:
 	/**
 	 * Initialize commands
 	 */
-	TSharedPtr< FUICommandInfo > SetSpeciesErase;
+	TSharedPtr< FUICommandInfo > SetPaintSpecies;
+	TSharedPtr< FUICommandInfo > SetPaintBiome;
 	virtual void RegisterCommands() override;
 
 public:

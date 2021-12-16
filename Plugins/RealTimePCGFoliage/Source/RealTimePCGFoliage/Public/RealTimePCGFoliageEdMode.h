@@ -13,18 +13,15 @@ struct FFoliageUISettings
 	void Load();
 	void Save();
 
-	// tool
-	bool GetPaintToolSelected() const { return true; }
-	void SetPaintToolSelected(bool InbPaintToolSelected) { bPaintToolSelected = InbPaintToolSelected; }
-
-
 	float GetRadius() const { return Radius; }
 	void SetRadius(float InRadius) {  Radius = InRadius; }
 	float GetPaintDensity() const { return PaintDensity; }
 	void SetPaintDensity(float InPaintDensity) { PaintDensity = InPaintDensity; }
+	bool GetPaintToolSelected() { return true; }
+	bool bPaintBiome;
+	bool bPaintSpecies;
 
-	bool bPaintToolSelected;
-	bool bSpeciesEraseSelected;
+	bool IsInQuickEraseMode;
 
 	float Radius;
 	float PaintDensity;
@@ -178,9 +175,13 @@ public:
 	/** Set the brush mesh opacity */
 	void SetBrushOpacity(const float InOpacity);
 
-	void SetSpeciesErase();
+	void SetPaintBiome();
+	void SetPaintSpecies();
+	bool GetPaintBiome()const;
+	bool GetPaintSpecies()const;
 
-	bool GetSpeciesErase()const;
+	bool GetErase()const;
+
 	float GetPaintingBrushRadius() const;
 
 	ALandscape* GetLandscape() const;

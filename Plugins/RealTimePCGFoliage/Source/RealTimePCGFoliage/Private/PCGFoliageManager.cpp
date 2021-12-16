@@ -56,16 +56,16 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 	double start = FPlatformTime::Seconds();
 
 	TArray<FDesiredFoliageInstance> OutFoliageInstances;
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < Biomes.Num(); i++)
 	{
 		float ExtraRadius = 0;
 		for (USpecies* CurrentSpecies : Biomes[i]->Species)
 		{
 			ExtraRadius += CurrentSpecies->Radius;
 		}
+		//ExtraRadius *= 5;
 		DirtyRect = FVector4(DirtyCenter-(ExtraRadius+DirtyRadius), DirtyCenter+ (ExtraRadius + DirtyRadius));
-		//FVector4(BrushLocation.X - GetPaintingBrushRadius(), BrushLocation.Y - GetPaintingBrushRadius(), BrushLocation.X + GetPaintingBrushRadius(), BrushLocation.Y + GetPaintingBrushRadius());
-		BiomeGeneratePipeline(Biomes[0], BiomeData[0], OutFoliageInstances, DirtyRect);
+		BiomeGeneratePipeline(Biomes[i], BiomeData[i], OutFoliageInstances, DirtyRect);
 		CleanPreviousFoliage(OutFoliageInstances, DirtyRect);
 	}
 	//bool Result = ExecuteSimulation(OutFoliageInstances, DirtyRect);
@@ -101,24 +101,7 @@ TArray<FSpeciesProxy> APCGFoliageManager::CreateSpeciesProxy(UBiome* InBiome)
 	return Result;
 
 }
-//bool APCGFoliageManager::ExecuteSimulation(TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect)
-//{
-//	
-//	BiomeGeneratePipeline(Biomes[0], BiomeData[0], OutFoliageInstances,DirtyRect);
-//	double start = FPlatformTime::Seconds();
-//
-//	
-//	//UReaTimeScatterLibrary::ScatterWithCollision(this, Density,DistanceField,- Size/2, Size / 2,Pattern,CollisionPasses, ScatterPointCloud,false,true);
-//	double end1 = FPlatformTime::Seconds();
-//	UE_LOG(LogTemp, Warning, TEXT("ScatterWithCollision executed in %f seconds."), end1 - start);
-//	
-//	FTransform WorldTM;
-//	//ConvertToFoliageInstance(ScatterPointCloud,WorldTM,2000,OutFoliageInstances);
-//	double end2 = FPlatformTime::Seconds();
-//	UE_LOG(LogTemp, Warning, TEXT("ConvertToFoliageInstance executed in %f seconds."), end2 - end1);
-//	
-//	return true;
-//}
+
 
 void APCGFoliageManager::ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutInstances) const
 {

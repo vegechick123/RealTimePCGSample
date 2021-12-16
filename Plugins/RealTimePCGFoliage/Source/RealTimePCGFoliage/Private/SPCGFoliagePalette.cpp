@@ -159,7 +159,7 @@ void SPCGFoliagePalette::Construct(const FArguments& InArgs)
 				.OnGenerateRow(this, &SPCGFoliagePalette::GenerateRowForSpeciesList)
 				.ItemHeight(64)
 				.ListItemsSource(&SpeceiesModels)
-				.IsEnabled(EdMode,&FRealTimePCGFoliageEdMode::GetSpeciesErase)
+				.IsEnabled(EdMode,&FRealTimePCGFoliageEdMode::GetPaintSpecies)
 			]
 		]
 	];

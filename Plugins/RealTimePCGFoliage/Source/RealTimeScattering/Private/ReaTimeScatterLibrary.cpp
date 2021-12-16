@@ -127,6 +127,8 @@ static void RealTImeScatterGPU_RenderThread(
 		Params.InputPattern[i] = Pattern.PointCloud[i];
 	}
 
+	StartCell = FIntPoint(0, 0);
+
 	Params.PatternSize = Pattern.Size;
 	Params.PatternPointNum = Pattern.PointCloud.Num();
 	Params.InputTexture = DensityTexture;
@@ -151,7 +153,7 @@ static void RealTImeScatterGPU_RenderThread(
 	FUnorderedAccessViewRHIRef OutputBufferUAV = RHICreateUnorderedAccessView(OutputBuffer, true, false);
 	Params.OutputPointCloud = OutputBufferUAV;
 
-	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(DirtyCellNumber.X, DirtyCellNumber.Y, 1));
+	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(CellNumber.X, CellNumber.Y, 1));
 
 	double start = FPlatformTime::Seconds();
 
@@ -417,16 +419,6 @@ void UReaTimeScatterLibrary::ScatterWithCollision(
 	bool UseGPU)
 {
 	return;
-	/*if (!Mask||InData.Num() == 0)
-		return;
-	TArray<FColor> Samples;
-	FIntRect SampleRect(0, 0, Mask->SizeX, Mask->SizeY);
-
-	FRenderCommandFence Fence;
-	OutData.AddDefaulted(InData.Num());
-	RealTImeScatterGPU(WorldContextObject, Mask, OutputDistanceField, BottomLeft, TopRight, Pattern, InData, OutData,  FlipY);
-	Fence.BeginFence();
-	Fence.Wait();*/
 
 }
 

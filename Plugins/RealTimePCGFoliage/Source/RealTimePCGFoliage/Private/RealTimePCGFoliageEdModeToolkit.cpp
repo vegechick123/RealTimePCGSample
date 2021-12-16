@@ -64,7 +64,9 @@ FText FRealTimePCGFoliageEdModeToolkit::GetToolPaletteDisplayName(FName PaletteN
 void FRealTimePCGFoliageEdModeToolkit::BuildToolPalette(FName PaletteName, FToolBarBuilder& ToolbarBuilder)
 {
 	const FPCGFoliageEditorCommands& Commands = FPCGFoliageEditorCommands::Get();
-	ToolbarBuilder.AddToolBarButton(Commands.SetSpeciesErase);
+	ToolbarBuilder.AddToolBarButton(Commands.SetPaintBiome);
+	ToolbarBuilder.AddToolBarButton(Commands.SetPaintSpecies);
+
 	if (PaletteName == PCGFoliageName)
 	{
 		PCGFoliageEdWidget->CustomizeToolBarPalette(ToolbarBuilder);
