@@ -28,7 +28,7 @@ public:
 /**
  *
  */
-
+class USceneCaptureComponent2D;
 UCLASS()
 class REALTIMEPCGFOLIAGE_API APCGFoliageManager : public AActor
 {
@@ -46,33 +46,42 @@ public:
 	ALandscape* Landscape;
 	UPROPERTY(VisibleAnywhere)
 	UTextureCollectComponentBase* TextureCollectComponent;
-	
-	UPROPERTY(EditAnywhere, meta = (MakeStructureDefaultValue = "256,256"))
-	FIntPoint TexSize;
+	UPROPERTY(VisibleAnywhere)
+	USceneCaptureComponent2D* SceneCaptureComponent2D;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (MakeStructureDefaultValue = "256,256"))
+	FIntPoint TextureSize;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (MakeStructureDefaultValue = "2048,2048"))
+	FIntPoint RenderTargetSize;
 	UPROPERTY(EditAnywhere)
 	TArray<UBiome*> Biomes;
+
+	
+	
 	UPROPERTY(VisibleAnywhere)
 	TArray<FBiomeData> BiomeData;
 	
 	UPROPERTY(VisibleAnywhere)
 	UMaterialInterface* PlacementCopyMaterial;
 	
-	UPROPERTY(EditAnywhere, Transient)
-	UTextureRenderTarget2D* Mask;
 	UPROPERTY(VisibleAnywhere, Transient)
-	UTextureRenderTarget2D* Density;
-	UPROPERTY(EditAnywhere)
-	UMaterialInterface* DensityCalculateMaterial;
-	UPROPERTY(EditAnywhere)
-	UTextureRenderTarget2D* DistanceSeed;
+	UTextureRenderTarget2D* LandscapeDepth;
+	UPROPERTY(VisibleAnywhere, Transient)
+	UTextureRenderTarget2D* LandscapeNormal;
+	
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* DistanceField;
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* PaintMaterial;
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, meta = (Category = "Brush Materials"))
+	UMaterialInterface* BiomePreviewMaterial;
+	UPROPERTY(VisibleAnywhere, meta = (Category = "Brush Materials"))
 	UMaterialInterface* DebugPaintMaterial;
-	UPROPERTY(EditAnywhere)
-	TArray<FPCGFoliageType> PCGFoliageTypes;
+	
+	UPROPERTY(VisibleAnywhere, Transient, meta = (Category = "Debug MIDs"))
+	UMaterialInstanceDynamic* DebugDensityMaterial;
+	UPROPERTY(VisibleAnywhere, meta = (Category = "Debug RenderTarget"))
+	TWeakObjectPtr<UTextureRenderTarget2D> DebugRT;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -89,8 +98,11 @@ public:
 	void RemoveProceduralContent(bool InRebuildTree = true);
 	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
 	UFUNCTION(CallInEditor)
-	void FillBiomeData();
+	void RegenerateBiomeData();
+	UFUNCTION(CallInEditor)
+	void CaptureLandscape();
 	void BiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
-	FVector4 GetTotalRect();
-
+	FVector4 GetLandscapeBound();
+	FIntPoint GetLandscapeSize();
+	void DrawPreviewBiomeRenderTarget(UTextureRenderTarget2D* RenderTarget,TArray<FLinearColor> PreviewColors);
 };

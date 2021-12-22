@@ -26,9 +26,12 @@ struct FBiomeData
 	TArray<UTexture2D*> CleanMaps;
 	UPROPERTY()
 	FIntPoint TexSize;
+	UPROPERTY()
+	TWeakObjectPtr<UBiome> Biome;
 	UPROPERTY(Transient,VisibleAnywhere)
 	TArray<UTextureRenderTarget2D*> DensityMaps;
 	FBiomeData();
-	FBiomeData(UObject* Outer, UBiome* Biome, FIntPoint InTexSize);
+	FBiomeData(UObject* Outer, UBiome* InBiome, FIntPoint InTexSize);
+	bool CheckBiome(UBiome* InBiome) const;
 	void FillDensityMaps();
 };

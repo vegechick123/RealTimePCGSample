@@ -65,6 +65,7 @@ public:
 
 	class UMaterialInstanceDynamic* PaintMID;
 	UTextureRenderTarget2D* PaintRTCache;
+	UTextureRenderTarget2D* BiomePreviewRenderTarget;
 	bool bBrushTraceValid;
 	FVector BrushLocation;
 	FVector BrushNormal;

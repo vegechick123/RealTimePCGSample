@@ -20,10 +20,6 @@ FSpeceiesModel::FSpeceiesModel(USpecies* InSpecies, UTexture2D* InTexture):Speci
 
 TSharedRef<SWidget> FSpeceiesModel::CreateWidget(TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const
 {
-	;
-	//FAssetData AssetData = FAssetData(Species->FoliageTypes[0]);
-	//TSharedPtr< FAssetThumbnail > Thumbnail = MakeShareable(new FAssetThumbnail(Species->FoliageTypes[0], 8, 8, InThumbnailPool));
-
 	return SNew(STextBlock)
 		.Text(FText::FromString(Species->GetName()));
 }
@@ -119,7 +115,6 @@ void SPCGFoliagePalette::RefreshSpeceiesModels()
 		SpeceiesModels.Add(Model);
 	}
 	SpeceiesListView->RequestListRefresh();
-	//SpeceiesModels.Add(MakeShareable(new FSpeceiesModel(nullptr, nullptr)));
 }
 void SPCGFoliagePalette::OnSelectedBiomeChange(TSharedPtr<FBiomeModel> BiomeModel, ESelectInfo::Type SelectType)
 {
@@ -132,7 +127,7 @@ void SPCGFoliagePalette::Construct(const FArguments& InArgs)
 {
 	const FText BlankText = FText::GetEmpty();
 	EdMode = (FRealTimePCGFoliageEdMode*)GLevelEditorModeTools().GetActiveMode(FRealTimePCGFoliageEdMode::EM_RealTimePCGFoliageEdModeId);
-	
+	BiomePreviewSlateBrush = FDeferredCleanupSlateBrush::CreateBrush(EdMode->BiomePreviewRenderTarget, FVector2D(256, 256));
 	ThumbnailPool = MakeShareable(new FAssetThumbnailPool(64));
 	ChildSlot
 	[
@@ -141,14 +136,50 @@ void SPCGFoliagePalette::Construct(const FArguments& InArgs)
 		.Style(FEditorStyle::Get(), "FoliageEditMode.Splitter")
 		+ SSplitter::Slot()
 		[
-			SAssignNew(BiomeListView, SListView<TSharedPtr<FBiomeModel>>)
-			.OnGenerateRow(this, &SPCGFoliagePalette::GenerateRowForBiomeList)
-			.ItemHeight(32)
-			.ListItemsSource(&BiomeModels)
-			.SelectionMode(ESelectionMode::Single)
-			.OnSelectionChanged(this, &SPCGFoliagePalette::OnSelectedBiomeChange)
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SAssignNew(BiomeListView, SListView<TSharedPtr<FBiomeModel>>)
+				.OnGenerateRow(this, &SPCGFoliagePalette::GenerateRowForBiomeList)
+				.ItemHeight(32)
+				.ListItemsSource(&BiomeModels)
+				.SelectionMode(ESelectionMode::Single)
+				.OnSelectionChanged(this, &SPCGFoliagePalette::OnSelectedBiomeChange)
+			]
+			/*+ SVerticalBox::Slot()
+			.MaxHeight(128)				
+			.HAlign(EHorizontalAlignment::HAlign_Center)
+				
+			[
+				SNew(SBox)
+				.WidthOverride(128)
+				.HeightOverride(128)
+				SNew(SHorizontalBox)
+				+SHorizontalBox::Slot()
+				.MaxWidth(128)
+				.VAlign(EVerticalAlignment::VAlign_Center)
+				[
+					SNew(SImage)
+					.Image(FDeferredCleanupSlateBrush::TrySlateBrush(BiomePreviewSlateBrush))
+				]
+			]*/
+			
 		]
-
+		+SSplitter::Slot()
+		[
+			SNew(SBox)
+			.WidthOverride(128)
+			.HeightOverride(128)
+			.MaxAspectRatio(1)
+			.HAlign(EHorizontalAlignment::HAlign_Center)
+			.VAlign(EVerticalAlignment::VAlign_Center)
+			[
+				SNew(SImage)
+				.Image(FDeferredCleanupSlateBrush::TrySlateBrush(BiomePreviewSlateBrush))
+				.RenderOpacity(1)
+			]
+		]
 		// Details
 		+ SSplitter::Slot()
 		[

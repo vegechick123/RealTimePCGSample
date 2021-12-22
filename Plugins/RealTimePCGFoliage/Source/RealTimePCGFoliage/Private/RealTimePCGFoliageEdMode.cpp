@@ -70,11 +70,12 @@ FRealTimePCGFoliageEdMode::FRealTimePCGFoliageEdMode()
 	SphereBrushComponent->SetAbsolute(true, true, true);
 	SphereBrushComponent->CastShadow = false;
 	PaintRTCache = nullptr;
+	BiomePreviewRenderTarget = nullptr;
 	bBrushTraceValid = false;
 	BrushLocation = FVector::ZeroVector;
 
 	PaintMID = UMaterialInstanceDynamic::Create(LoadObject<UMaterial>(nullptr, TEXT("/RealTimePCGFoliage/Material/M_PaintBrush.M_PaintBrush"), nullptr, LOAD_None, nullptr), GetTransientPackage());
-
+	BiomePreviewRenderTarget = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(BiomePreviewRenderTarget,"BiomePreviewRenderTarget",FIntPoint(128,128),ETextureRenderTargetFormat::RTF_RGBA8,FLinearColor::Black);
 	// Get the default opacity from the material.
 	FName OpacityParamName("OpacityAmount");
 	BrushMID->GetScalarParameterValue(OpacityParamName, DefaultBrushOpacity);
@@ -91,6 +92,7 @@ void FRealTimePCGFoliageEdMode::AddReferencedObjects(FReferenceCollector& Collec
 
 	Collector.AddReferencedObject(SphereBrushComponent);
 	Collector.AddReferencedObject(PaintMID);
+	Collector.AddReferencedObject(BiomePreviewRenderTarget);
 	if(PaintRTCache!=nullptr)
 		Collector.AddReferencedObject(PaintRTCache);
 }
@@ -469,7 +471,11 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	SetPaintMaterial();
 	const FScopedTransaction Transaction(FText::FromString("Draw Mask"));
 	FVector4 DirtyRect = FVector4(BrushLocation.X - GetPaintingBrushRadius(), BrushLocation.Y - GetPaintingBrushRadius(), BrushLocation.X+GetPaintingBrushRadius(), BrushLocation.Y + GetPaintingBrushRadius());
-	PaintRTCache = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(PaintRTCache, "PaintRTCache", PCGFoliageManager->TexSize, RTF_R8,FLinearColor::Black);	
+	PaintRTCache = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(PaintRTCache, "PaintRTCache", PCGFoliageManager->TextureSize, RTF_R8,FLinearColor::Black);	
+	double start, end;
+	start = FPlatformTime::Seconds();
+
+	
 	if (UISettings.bPaintSpecies)
 	{
 		
@@ -508,6 +514,15 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 		}
 		
 	}
+	end = FPlatformTime::Seconds();
+
+	UE_LOG(LogTemp, Warning, TEXT("PaintTexture in %f seconds."), end - start);
+	TArray<FLinearColor> ColorTemp;
+	ColorTemp.Add(FLinearColor::Red);
+	ColorTemp.Add(FLinearColor::Blue);
+
+	PCGFoliageManager->DrawPreviewBiomeRenderTarget(BiomePreviewRenderTarget, ColorTemp);
+	PCGFoliageManager->DebugRT = BiomePreviewRenderTarget;
 	PCGFoliageManager->DebugPaintMaterial = PaintMID;
 	PCGFoliageManager->Modify();
 	PCGFoliageManager->GenerateProceduralContent(true,FVector2D(BrushLocation.X, BrushLocation.Y), GetPaintingBrushRadius());
@@ -583,9 +598,11 @@ void FRealTimePCGFoliageEdMode::SetPaintMaterial()
 {
 	ALandscape* Land = GetLandscape();
 	FVector LocalCoord = Land->GetTransform().InverseTransformPosition(BrushLocation);
-	LocalCoord.X /= 505;
-	LocalCoord.Y /= 505;
-	PaintMID->SetScalarParameterValue("Radius", UISettings.GetRadius()/505/100);
+	FIntPoint Resolution = PCGFoliageManager->GetLandscapeSize();
+
+	LocalCoord.X /= Resolution.X;
+	LocalCoord.Y /= Resolution.Y;
+	PaintMID->SetScalarParameterValue("Radius", UISettings.GetRadius()/ Resolution.X /100);
 	PaintMID->SetVectorParameterValue("Center", LocalCoord);
 	if(GetErase())
 		PaintMID->SetVectorParameterValue("Color", FLinearColor::Black);
@@ -735,6 +752,7 @@ bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageT
 		{
 			Inst.ProceduralGuid = PotentialInstance.DesiredInstance.ProceduralGuid;
 			Inst.BaseComponent = PotentialInstance.HitComponent;
+			//Inst.
 			PlacedInstances.Add(MoveTemp(Inst));
 			bPlacedInstances = true;
 		}

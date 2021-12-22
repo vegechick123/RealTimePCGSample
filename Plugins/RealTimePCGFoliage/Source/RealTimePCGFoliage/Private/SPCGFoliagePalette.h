@@ -35,6 +35,7 @@ public:
 		void RefreshBiomeModels();
 		void RefreshSpeceiesModels();
 		void OnSelectedBiomeChange(TSharedPtr<FBiomeModel> BiomeModel,ESelectInfo::Type SelectType);
+		TSharedPtr<FDeferredCleanupSlateBrush> BiomePreviewSlateBrush;
 		TArray<TSharedPtr<FSpeceiesModel>> SpeceiesModels;
 		TArray<TSharedPtr<FBiomeModel>> BiomeModels;
 		TSharedPtr<SListView<TSharedPtr<FSpeceiesModel>>> SpeceiesListView;
