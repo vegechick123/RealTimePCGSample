@@ -63,14 +63,52 @@ void UReaTimeScatterLibrary::RealTImeScatter(const TArray<FColor>& ColorData, FI
 	
 
 }
-void CleanUAV_RenderThread(FUnorderedAccessViewRHIRef UAV,float Value, ERHIFeatureLevel::Type FeatureLevel)
+
+struct FPointCloudReadBackBuffer
 {
-	/*TShaderMapRef<FUAVCleanCS>UAVCleanCS(GetGlobalShaderMap(FeatureLevel));
-	FUAVCleanCS::FParameters Params;
-	Params.Texture = UAV;
-	Params.Value = Value;
-	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);*/
-}
+	TResourceArray<uint32> InstanceCountBufferData;
+	FStructuredBufferRHIRef  InstanceCountBuffer;
+
+	TResourceArray<FScatterPoint>OutputBufferData;	
+	FStructuredBufferRHIRef  OutputBuffer;
+	int32 MaxNum;
+	void InitBuffer(int32 InMaxNum)
+	{
+		MaxNum = InMaxNum;
+		TResourceArray<uint32> InstanceBufferData;
+		InstanceBufferData.Reset(1);
+		InstanceBufferData.Add(0);
+		InstanceBufferData.SetAllowCPUAccess(true);
+		
+		FRHIResourceCreateInfo CreateInfo;
+		CreateInfo.ResourceArray = &InstanceBufferData;
+		
+		InstanceCountBuffer = RHICreateStructuredBuffer(sizeof(uint32), sizeof(uint32) * 1, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
+		
+		OutputBufferData.Reset(MaxNum);
+		OutputBufferData.AddUninitialized(MaxNum);
+		OutputBufferData.SetAllowCPUAccess(true);
+		CreateInfo.ResourceArray = &OutputBufferData;
+		OutputBuffer = RHICreateStructuredBuffer(sizeof(FScatterPoint), sizeof(FScatterPoint) * MaxNum, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);		
+
+	}
+	void ReadBackToArray(TArray<FScatterPoint>& OutputData)
+	{
+		double start = FPlatformTime::Seconds();
+		
+		uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
+		RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
+		FScatterPoint* Srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * MaxNum, EResourceLockMode::RLM_ReadOnly);
+		OutputData.Reset(Count);
+		OutputData.AddUninitialized(Count);
+		FMemory::Memcpy(OutputData.GetData(), Srcptr, sizeof(FScatterPoint) * Count);
+		RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
+
+		double end = FPlatformTime::Seconds();
+		UE_LOG(LogTemp, Warning, TEXT("ReadBack executed in %f seconds."), end - start);
+	}
+};
+
 static void RealTImeScatterGPU_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FRHITexture2D* DensityTexture,
@@ -84,7 +122,8 @@ static void RealTImeScatterGPU_RenderThread(
 	float RadiusScale,
 	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
-	TArray<FScatterPoint>& OutputPointCloud
+	TArray<FScatterPoint>& OutputPointCloud,
+	FPointCloudReadBackBuffer& PointCloudReadBackBuffer
 )
 {
 
@@ -96,38 +135,42 @@ static void RealTImeScatterGPU_RenderThread(
 	FVector2D Temp = TotalSize / ScaledPatternSize;
 	int PerPointsCnt = Pattern.PointCloud.Num();
 	FIntPoint CellNumber = FIntPoint(ceilf(Temp.X), ceilf(Temp.Y));
-	Temp = (FVector2D(DirtyRect.X, DirtyRect.Y) - FVector2D(TotalRect.X, TotalRect.Y)) / ScaledPatternSize;
+
+	FVector4 SimulateRect = DirtyRect+FVector4(-RadiusScale,RadiusScale,-RadiusScale,RadiusScale)*100;
+	
+	Temp = (FVector2D(SimulateRect.X, SimulateRect.Y) - FVector2D(TotalRect.X, TotalRect.Y)) / ScaledPatternSize;
 	FIntPoint StartCell = FIntPoint(floorf(Temp.X), floorf(Temp.Y));
-	Temp =  (FVector2D(DirtyRect.Z, DirtyRect.W) - FVector2D(TotalRect.X, TotalRect.Y)) / ScaledPatternSize;
+	
+	
+	
+	Temp =  (FVector2D(SimulateRect.Z, SimulateRect.W) - FVector2D(TotalRect.X, TotalRect.Y)) / ScaledPatternSize;
 	FIntPoint EndCell = FIntPoint(ceilf(Temp.X), ceilf(Temp.Y));
 
+	StartCell.X = FMath::Max(0, StartCell.X);
+	StartCell.Y = FMath::Max(0, StartCell.Y);
+	EndCell.X = FMath::Min(CellNumber.X, EndCell.X);
+	EndCell.Y = FMath::Min(CellNumber.Y, EndCell.Y);
+
 	FIntPoint DirtyCellNumber = EndCell - StartCell ;
-	int Total = CellNumber.X * CellNumber.Y;
+	int TotalCellNumber = CellNumber.X * CellNumber.Y;
 
 
 	TShaderMapRef<FGPUScatteringCS>GPUScatteringCS(GetGlobalShaderMap(FeatureLevel));
 	FGPUScatteringCS::FParameters Params;
 
+	const int Maxnum = TotalCellNumber * Pattern.PointCloud.Num();
 
+	PointCloudReadBackBuffer.InitBuffer(Maxnum);
 
-	TResourceArray<uint32> bufferData;
-	bufferData.Reset(1);
-	bufferData.Add(0);
-	bufferData.SetAllowCPUAccess(true);
-
-	FRHIResourceCreateInfo CreateInfo;
-	CreateInfo.ResourceArray = &bufferData;
-		
-	FStructuredBufferRHIRef  InstanceCountBuffer = RHICreateStructuredBuffer(sizeof(uint32), sizeof(uint32) * 1, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
-	FUnorderedAccessViewRHIRef InstanceCountBufferUAV = RHICreateUnorderedAccessView(InstanceCountBuffer, true, false);
+	FUnorderedAccessViewRHIRef InstanceCountBufferUAV = RHICreateUnorderedAccessView(PointCloudReadBackBuffer.InstanceCountBuffer, true, false);
+	FUnorderedAccessViewRHIRef OutputBufferUAV = RHICreateUnorderedAccessView(PointCloudReadBackBuffer.OutputBuffer, true, false);
 	Params.InstanceCountBuffer = InstanceCountBufferUAV;
+
 
 	for (int i = 0; i < Pattern.PointCloud.Num(); i++)
 	{
 		Params.InputPattern[i] = Pattern.PointCloud[i];
 	}
-
-	StartCell = FIntPoint(0, 0);
 
 	Params.PatternSize = Pattern.Size;
 	Params.PatternPointNum = Pattern.PointCloud.Num();
@@ -141,42 +184,33 @@ static void RealTImeScatterGPU_RenderThread(
 	Params.ClipRect = DirtyRect;
 	Params.Ratio = Ratio;
 	Params.RadiusScale = RadiusScale;
-	Params.FlipY = FlipY ? 1 : 0;
-
-	TResourceArray<FScatterPoint> OutputBufferData;
-	const int Maxnum = Total * Params.PatternPointNum;
-	OutputBufferData.Reset(Maxnum);
-	OutputBufferData.AddUninitialized(Maxnum);
-	OutputBufferData.SetAllowCPUAccess(true);
-	CreateInfo.ResourceArray = &OutputBufferData;
-	FStructuredBufferRHIRef  OutputBuffer = RHICreateStructuredBuffer(sizeof(FScatterPoint), sizeof(FScatterPoint) * Maxnum, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
-	FUnorderedAccessViewRHIRef OutputBufferUAV = RHICreateUnorderedAccessView(OutputBuffer, true, false);
+	Params.FlipY = FlipY ? 1 : 0;	
 	Params.OutputPointCloud = OutputBufferUAV;
 
-	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(CellNumber.X, CellNumber.Y, 1));
+	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(DirtyCellNumber.X, DirtyCellNumber.Y, 1));
 
-	double start = FPlatformTime::Seconds();
+	//PointCloudReadBackBuffer.ReadBackToArray(OutputPointCloud);
+	//double start = FPlatformTime::Seconds();
 
-	uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
-	
-	double end1 = FPlatformTime::Seconds();
-	UE_LOG(LogTemp, Warning, TEXT("ReadBackCount executed in %f seconds."), end1 - start);
+	//uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
+	//
+	//double end1 = FPlatformTime::Seconds();
+	//UE_LOG(LogTemp, Warning, TEXT("ReadBackCount executed in %f seconds."), end1 - start);
 	       
-	RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
-	if (Count != 0)
-	{
-		//TODO
-		TArray<FScatterPoint>& OutputData = OutputPointCloud;
-		OutputData.Reset(Count);
-		OutputData.AddUninitialized(Count);
-		FScatterPoint* srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * Maxnum, EResourceLockMode::RLM_ReadOnly);
-		//
-		FMemory::Memcpy(OutputData.GetData(), srcptr, sizeof(FScatterPoint) * Count);
-		RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
-		//
-	}
-	double end2 = FPlatformTime::Seconds();
-	UE_LOG(LogTemp, Warning, TEXT("ReadBackPointCloud executed in %f seconds."), end2 - end1);
+	//RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
+	//if (Count != 0)
+	//{
+	//	TArray<FScatterPoint>& OutputData = OutputPointCloud;
+	//	OutputData.Reset(Count);
+	//	OutputData.AddUninitialized(Count);
+	//	FScatterPoint* srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * Maxnum, EResourceLockMode::RLM_ReadOnly);
+	//	//
+	//	FMemory::Memcpy(OutputData.GetData(), srcptr, sizeof(FScatterPoint) * Count);
+	//	RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
+	//	//
+	//}
+	//double end2 = FPlatformTime::Seconds();
+	//UE_LOG(LogTemp, Warning, TEXT("ReadBackPointCloud executed in %f seconds."), end2 - end1);
 	
 }
 static void JumpFlood_RenderThread(
@@ -304,6 +338,9 @@ void ScatterFoliagePass_RenderThread(
 	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
 
 	float LengthScale = TotalRect.Z - TotalRect.X;
+	
+	double start, end;
+	start = FPlatformTime::Seconds();
 
 	JumpFlood_RenderThread
 	(
@@ -314,12 +351,21 @@ void ScatterFoliagePass_RenderThread(
 		LengthScale,
 		FeatureLevel
 	);
+	end = FPlatformTime::Seconds();
+	TArray<FPointCloudReadBackBuffer> ReadBackBuffers;
+
+	UE_LOG(LogTemp, Warning, TEXT("Placement JumpFlood excute in %f seconds."), end - start);
 	for (int i = 0; i < InData.Num(); i++)
 	{
 	
 		//Generate Point Cloud Data
 		float Ratio=InData[i].Ratio;
 		float RadiusScale= InData[i].Radius;
+		
+		start = FPlatformTime::Seconds();
+
+		ReadBackBuffers.AddDefaulted();
+		
 		RealTImeScatterGPU_RenderThread
 		(
 			RHICmdList,
@@ -334,8 +380,14 @@ void ScatterFoliagePass_RenderThread(
 			RadiusScale,
 			FlipY,
 			FeatureLevel,
-			OutputPointCloud[i].ScatterPoints
+			OutputPointCloud[i].ScatterPoints,
+			ReadBackBuffers.Last()
 		);
+
+		end = FPlatformTime::Seconds();
+		UE_LOG(LogTemp, Warning, TEXT("Point Cloud Generate excute in %f seconds."), end - start);
+
+		start = FPlatformTime::Seconds();
 		//Generate Collision SDF
 		JumpFlood_RenderThread
 		(
@@ -346,13 +398,19 @@ void ScatterFoliagePass_RenderThread(
 			LengthScale,
 			FeatureLevel
 		);
-	}
 
+		end = FPlatformTime::Seconds();
+		UE_LOG(LogTemp, Warning, TEXT("Collision SDF JumpFlood excute in %f seconds."), end - start);
+	}
+	for (int i = 0; i < InData.Num(); i++)
+	{
+		ReadBackBuffers[i].ReadBackToArray(OutputPointCloud[i].ScatterPoints);
+	}
 	FRHICopyTextureInfo CopyInfo;
 	CopyInfo.Size.X = TexSize.X;
 	CopyInfo.Size.Y = TexSize.Y;
 	CopyInfo.Size.Z = 1;
-	RHICmdList.CopyTexture(PlacementSDFRT, SDFTexture, CopyInfo);
+	//RHICmdList.CopyTexture(PlacementSDFRT, SDFTexture, CopyInfo);
 	
 }
 void UReaTimeScatterLibrary::RealTImeScatterGPU(

@@ -19,8 +19,8 @@ struct FSpeceiesModel
 struct FBiomeModel
 {
 	TWeakObjectPtr<UBiome> Biome;
-	FColor PreviewColor;
-	FBiomeModel(UBiome* InBiome, FColor InPreviewColor);
+	FLinearColor PreviewColor;
+	FBiomeModel(UBiome* InBiome, FLinearColor InPreviewColor);
 };
 /** The palette of foliage types available for use by the foliage edit mode */
 class SPCGFoliagePalette : public SCompoundWidget

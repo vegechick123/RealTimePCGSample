@@ -99,7 +99,7 @@ void FRealTimePCGFoliageEdMode::AddReferencedObjects(FReferenceCollector& Collec
 void FRealTimePCGFoliageEdMode::Enter()
 {
 	FEdMode::Enter();
-
+	UISettings.Load();
 	// Clear any selection in case the instanced foliage actor is selected
 	GEditor->SelectNone(true, true);
 
@@ -130,6 +130,7 @@ void FRealTimePCGFoliageEdMode::Exit()
 		FToolkitManager::Get().CloseToolkit(Toolkit.ToSharedRef());
 		Toolkit.Reset();
 	}
+	UISettings.Save();
 	// Remove the brush
 	SphereBrushComponent->UnregisterComponent();
 	PCGFoliageManager = nullptr;
@@ -517,11 +518,9 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 	end = FPlatformTime::Seconds();
 
 	UE_LOG(LogTemp, Warning, TEXT("PaintTexture in %f seconds."), end - start);
-	TArray<FLinearColor> ColorTemp;
-	ColorTemp.Add(FLinearColor::Red);
-	ColorTemp.Add(FLinearColor::Blue);
+	TArray<FLinearColor> PreviewColor= PCGFoliageManager->GetBiomePreviewColor();
 
-	PCGFoliageManager->DrawPreviewBiomeRenderTarget(BiomePreviewRenderTarget, ColorTemp);
+	PCGFoliageManager->DrawPreviewBiomeRenderTarget(BiomePreviewRenderTarget, PreviewColor);
 	PCGFoliageManager->DebugRT = BiomePreviewRenderTarget;
 	PCGFoliageManager->DebugPaintMaterial = PaintMID;
 	PCGFoliageManager->Modify();
@@ -710,7 +709,7 @@ static void SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, 
 	UE_LOG(LogTemp, Warning, TEXT("SpawnFoliageInstance in %f seconds."), end1 - start);
 }
 
-bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter, bool InRebuildFoliageTree)
+bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances, const FPCGFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter, bool InRebuildFoliageTree)
 {
 
 	if (DesiredInstances.Num() == 0)
@@ -763,7 +762,7 @@ bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageT
 	return bPlacedInstances;
 }
 
-void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
+void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FPCGFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
 {
 	double start = FPlatformTime::Seconds();
 
@@ -849,3 +848,22 @@ FBiomeData* FRealTimePCGFoliageEdMode::GetEditedBiomeData()
 	return &GetPCGFoliageManager()->BiomeData[Index];
 }
 
+void FPCGFoliageUISettings::Load()
+{
+	GConfig->GetFloat(TEXT("PCGFoliageEdit"), TEXT("Radius"), Radius, GEditorPerProjectIni);
+	GConfig->GetFloat(TEXT("PCGFoliageEdit"), TEXT("FallOff"), FallOff, GEditorPerProjectIni);
+
+	GConfig->GetBool(TEXT("PCGFoliageEdit"), TEXT("bPaintBiome"), bPaintBiome, GEditorPerProjectIni);
+	GConfig->GetBool(TEXT("PCGFoliageEdit"), TEXT("bPaintSpecies"), bPaintSpecies, GEditorPerProjectIni);
+
+	IsInQuickEraseMode = false;
+}
+
+void FPCGFoliageUISettings::Save()
+{
+	GConfig->SetFloat(TEXT("PCGFoliageEdit"), TEXT("Radius"), Radius, GEditorPerProjectIni);
+	GConfig->SetFloat(TEXT("PCGFoliageEdit"), TEXT("FallOff"), FallOff, GEditorPerProjectIni);
+
+	GConfig->SetBool(TEXT("PCGFoliageEdit"), TEXT("bPaintBiome"), bPaintBiome, GEditorPerProjectIni);
+	GConfig->SetBool(TEXT("PCGFoliageEdit"), TEXT("bPaintSpecies"), bPaintSpecies, GEditorPerProjectIni);
+}

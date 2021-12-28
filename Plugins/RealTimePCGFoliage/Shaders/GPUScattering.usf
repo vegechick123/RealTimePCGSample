@@ -27,12 +27,22 @@ uint2 GetCenterID(uint3 Gid)
 {
     return Gid.xy + CenterOffset;
 }
-
+bool InRect(float2 Pos,float4 Rect)
+{
+    if (Pos.x < Rect.x || Pos.x >= Rect.z || Pos.y < Rect.y || Pos.y >= Rect.w)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
 [numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
 void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y)        --> current group index (dispatched by c++)
                        uint GI : SV_GroupIndex)            //atm: 0...256 in columns (X)           --> "flattened" index of a thread within a group))
 {
-    
+   // InstanceCountBuffer[0] = 100;
     uint2 centerID = GetCenterID(Gid);
     float2 center = float2(centerID.x, centerID.y);
     uint k = GI;
@@ -48,7 +58,8 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     if (FlipY)
         uv = 1 - uv.y;
     pos += TotalRect.xy;
-    if (pos.x < TotalRect.x || pos.x >= TotalRect.z || pos.y < TotalRect.y || pos.y >= TotalRect.w)
+    
+    if (InRect(pos, TotalRect))
     {
         return;
     }
@@ -66,15 +77,16 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     FScatterPoint res;
     if (r > hash1 && hash2 < Ratio && collisionSDF > 0 && placementSDF > 100 * RadiusScale)
     {
+        
         OutputSDF[sdfSize * uv] = 100 * RadiusScale;
-            if (pos.x < ClipRect.x || pos.x >= ClipRect.z || pos.y < ClipRect.y || pos.y >= ClipRect.w)
+        if (InRect(pos, ClipRect))
         {
             return;
         }
         InterlockedAdd(InstanceCountBuffer[0], 1, curindex);
         res.LocationX = pos.x;
         res.LocationY = pos.y;
-        OutputPointCloud[curindex] = res;          
+        OutputPointCloud[curindex] = res;
         
     }
     

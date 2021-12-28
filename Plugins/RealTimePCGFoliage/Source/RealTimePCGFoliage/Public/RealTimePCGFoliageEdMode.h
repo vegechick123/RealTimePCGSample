@@ -8,7 +8,7 @@
 #include "PCGFoliageManager.h"
 
 // Current user settings in Foliage UI
-struct FFoliageUISettings
+struct FPCGFoliageUISettings
 {
 	void Load();
 	void Save();
@@ -24,6 +24,7 @@ struct FFoliageUISettings
 	bool IsInQuickEraseMode;
 
 	float Radius;
+	float FallOff;
 	float PaintDensity;
 	
 };
@@ -56,7 +57,7 @@ public:
 	virtual ~FRealTimePCGFoliageEdMode();
 	
 
-	FFoliageUISettings UISettings;
+	FPCGFoliageUISettings UISettings;
 
 	/** Command list lives here so that the key bindings on the commands can be processed in the viewport. */
 	TSharedPtr<FUICommandList> UICommandList;
@@ -199,10 +200,10 @@ public:
 	static void AddInstances(UWorld* InWorld, const TArray<FDesiredFoliageInstance>& DesiredInstances, const FFoliagePaintingGeometryFilter& OverrideGeometryFilter = FFoliagePaintingGeometryFilter(), bool InRebuildFoliageTree = true);
 
 	/** Common code for adding instances to world based on settings */
-	static bool AddInstancesImp(UWorld* InWorld,const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances = TArray<int32>(), const FFoliageUISettings* UISettings = nullptr, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter = nullptr, bool InRebuildFoliageTree = true);
+	static bool AddInstancesImp(UWorld* InWorld,const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances = TArray<int32>(), const FPCGFoliageUISettings* UISettings = nullptr, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter = nullptr, bool InRebuildFoliageTree = true);
 
 	/** Similar to CalculatePotentialInstances, but it doesn't do any overlap checks which are much harder to thread. Meant to be run in parallel for placing lots of instances */
-	static void CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter);
+	static void CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FPCGFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter);
 
 	APCGFoliageManager* GetPCGFoliageManager(bool bCreateIfNone = false);
 

@@ -6,6 +6,7 @@
 #include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Colors/SColorBlock.h"
 #include "Slate/DeferredCleanupSlateBrush.h"
 #include "EditorModeManager.h"
 
@@ -67,11 +68,29 @@ TSharedRef<ITableRow> SPCGFoliagePalette::GenerateRowForBiomeList(TSharedPtr<FBi
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
+			.Padding(4.0f)
 			.AutoWidth()
-			.VAlign(VAlign_Center)
+			.HAlign(EHorizontalAlignment::HAlign_Left)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(Item->Biome->GetName()))
+				.ColorAndOpacity(FLinearColor::White)			
+
+			]
+			+ SHorizontalBox::Slot()
+			.Padding(4.0f)
+			.HAlign(EHorizontalAlignment::HAlign_Right)				
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.Padding(4.0f)
+				.AutoWidth()
+				.HAlign(EHorizontalAlignment::HAlign_Right)
+				[
+					SNew(SColorBlock)
+					.Color(Item->PreviewColor)
+					
+				]
 
 			]
 		];;
@@ -80,16 +99,14 @@ void SPCGFoliagePalette::RefreshBiomeModels()
 {
 	BiomeModels.Empty();
 	TArray<UBiome*>& Biomes = EdMode->GetPCGFoliageManager()->Biomes;
-	TArray<FColor> Colors;
-	Colors.Add(FColor::Red);
-	Colors.Add(FColor::Green);
-	Colors.Add(FColor::Blue);
+	TArray<FLinearColor> PreviewColor = EdMode->GetPCGFoliageManager()->GetBiomePreviewColor();
+
 	int Num = Biomes.Num();
 	for (int i = 0; i < Num; i++)
 	{
 		UBiome* BiomePtr =Biomes[i] ;
 
-		TSharedPtr<FBiomeModel> Model = MakeShareable(new FBiomeModel(BiomePtr, Colors[i]));
+		TSharedPtr<FBiomeModel> Model = MakeShareable(new FBiomeModel(BiomePtr, PreviewColor[i]));
 		///*if (i < CleanRTs.Num())
 		//	Model->Texture = CleanRTs[i];*/
 		//Model->Texture = EdMode->GetEditedRT();
@@ -202,7 +219,7 @@ void SPCGFoliagePalette::Construct(const FArguments& InArgs)
 
 #undef LOCTEXT_NAMESPACE
 
-FBiomeModel::FBiomeModel(UBiome* InBiome, FColor InPreviewColor):Biome(InBiome),PreviewColor(InPreviewColor)
+FBiomeModel::FBiomeModel(UBiome* InBiome, FLinearColor InPreviewColor):Biome(InBiome),PreviewColor(InPreviewColor)
 {
 
 }
