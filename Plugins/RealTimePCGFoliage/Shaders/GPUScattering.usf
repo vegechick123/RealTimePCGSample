@@ -42,7 +42,6 @@ bool InRect(float2 Pos,float4 Rect)
 void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y)        --> current group index (dispatched by c++)
                        uint GI : SV_GroupIndex)            //atm: 0...256 in columns (X)           --> "flattened" index of a thread within a group))
 {
-   // InstanceCountBuffer[0] = 100;
     uint2 centerID = GetCenterID(Gid);
     float2 center = float2(centerID.x, centerID.y);
     uint k = GI;

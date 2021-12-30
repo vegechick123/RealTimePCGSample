@@ -33,6 +33,35 @@ struct FScatterPointCloud
 	TArray<FVector2D> Points;
 	TArray<FScatterPoint> ScatterPoints;
 };
+struct FPointCloudReadBackBuffer
+{
+	TResourceArray<uint32> InstanceCountBufferData;
+	FStructuredBufferRHIRef  InstanceCountBuffer;
+
+	TResourceArray<FScatterPoint>OutputBufferData;
+	FStructuredBufferRHIRef  OutputBuffer;
+	int32 MaxNum;
+	void InitBuffer(int32 InMaxNum);
+	
+	void ReadBackToArray(TArray<FScatterPoint>& OutputData);
+};
+struct REALTIMESCATTERING_API FBiomePipelineContext
+{
+	FScatterPattern Pattern;
+	TArray<FSpeciesProxy> SpeciesProxys;
+	TArray<FScatterPointCloud> ScatterPointCloud;
+	FVector4 TotalRect;
+	FVector4 DirtyRect;
+	UTextureRenderTarget2D* PlacementMap;
+	TArray<UTextureRenderTarget2D*> DensityMaps;
+	UTextureRenderTarget2D* OutputDistanceField;
+	//Render Thread Resource
+	FTextureRenderTargetResource* PlacementMapResource;
+	TArray<FTextureRenderTargetResource*> DensityResources;
+	FTextureRenderTargetResource* OutputDistanceFieldResource;
+	TArray<FPointCloudReadBackBuffer> ReadBackBuffers;
+	void InitRenderThreadResource();
+};
 USTRUCT(BlueprintType)
 struct REALTIMESCATTERING_API FSpeciesProxy
 {
@@ -109,8 +138,7 @@ public :
 	}
 	UFUNCTION(BlueprintCallable)
 	static void RealTImeScatter(const TArray<FColor>& ColorData, FIntPoint TextureSize, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, TArray<FVector2D>& Result, float RadiusScale, float Ratio, bool FlipY);
-	UFUNCTION(BlueprintCallable)
-	static void RealTImeScatterGPU(UObject* WorldContextObject, UTextureRenderTarget2D* PlacementMap, TArray<UTextureRenderTarget2D*> DensityMaps, UTextureRenderTarget2D* OutputDistanceField,FVector4 TotalRect, FVector4 DirtyRect, const FScatterPattern& Pattern,const TArray<FSpeciesProxy>& InData,	TArray<FScatterPointCloud>& Result ,bool FlipY);
+	static void BiomeGeneratePipeline(UObject* WorldContextObject,TArray<FBiomePipelineContext>& BiomePipelineContext);
 	UFUNCTION(BlueprintCallable)
 	static void ScatterWithCollision(UObject* WorldContextObject,TArray<UTextureRenderTarget2D*> DensityMaps,UTextureRenderTarget2D* OutputDistanceField,FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, const TArray<FSpeciesProxy>& InData, TArray<FScatterPointCloud>& OutData, bool FlipY,bool UseGPU);	
 	UFUNCTION(BlueprintCallable)

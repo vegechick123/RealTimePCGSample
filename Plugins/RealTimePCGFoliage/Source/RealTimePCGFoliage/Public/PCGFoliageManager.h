@@ -98,7 +98,8 @@ public:
 	void RegenerateBiomeData();
 	UFUNCTION(CallInEditor)
 	void CaptureLandscape();
-	void BiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
+	void SingleBiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
+	void ExcuteBiomeGeneratePipeline(TArray<FDesiredFoliageInstance>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius);
 	FVector4 GetLandscapeBound();
 	FIntPoint GetLandscapeSize();
 	void DrawPreviewBiomeRenderTarget(UTextureRenderTarget2D* RenderTarget,TArray<FLinearColor> PreviewColors);

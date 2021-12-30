@@ -4,10 +4,17 @@ Texture2D<float> InputSeed;
 Texture2D<uint2> InputStepRT;
 RWTexture2D<uint2> OutputStepRT;
 RWTexture2D<float> OutputSDF;
+uint2 StartID;
+
 uint Inverse;
 uint Step;
 uint SubstractSeedRadius;
 float LengthScale;
+
+uint2 GetTexID(uint2 id)
+{
+    return StartID+id;
+}
 
 [numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
 void InitStepMain(uint3 id : SV_DispatchThreadID)

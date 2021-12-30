@@ -63,52 +63,49 @@ void UReaTimeScatterLibrary::RealTImeScatter(const TArray<FColor>& ColorData, FI
 	
 
 }
-
-struct FPointCloudReadBackBuffer
+void FPointCloudReadBackBuffer::InitBuffer(int32 InMaxNum)
 {
-	TResourceArray<uint32> InstanceCountBufferData;
-	FStructuredBufferRHIRef  InstanceCountBuffer;
-
-	TResourceArray<FScatterPoint>OutputBufferData;	
-	FStructuredBufferRHIRef  OutputBuffer;
-	int32 MaxNum;
-	void InitBuffer(int32 InMaxNum)
-	{
-		MaxNum = InMaxNum;
-		TResourceArray<uint32> InstanceBufferData;
-		InstanceBufferData.Reset(1);
-		InstanceBufferData.Add(0);
-		InstanceBufferData.SetAllowCPUAccess(true);
+	MaxNum = InMaxNum;
+	TResourceArray<uint32> InstanceBufferData;
+	InstanceBufferData.Reset(1);
+	InstanceBufferData.Add(0);
+	InstanceBufferData.SetAllowCPUAccess(true);
 		
-		FRHIResourceCreateInfo CreateInfo;
-		CreateInfo.ResourceArray = &InstanceBufferData;
+	FRHIResourceCreateInfo CreateInfo;
+	CreateInfo.ResourceArray = &InstanceBufferData;
 		
-		InstanceCountBuffer = RHICreateStructuredBuffer(sizeof(uint32), sizeof(uint32) * 1, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
+	InstanceCountBuffer = RHICreateStructuredBuffer(sizeof(uint32), sizeof(uint32) * 1, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
 		
-		OutputBufferData.Reset(MaxNum);
-		OutputBufferData.AddUninitialized(MaxNum);
-		OutputBufferData.SetAllowCPUAccess(true);
-		CreateInfo.ResourceArray = &OutputBufferData;
-		OutputBuffer = RHICreateStructuredBuffer(sizeof(FScatterPoint), sizeof(FScatterPoint) * MaxNum, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);		
+	OutputBufferData.Reset(MaxNum);
+	OutputBufferData.AddUninitialized(MaxNum);
+	OutputBufferData.SetAllowCPUAccess(true);
+	CreateInfo.ResourceArray = &OutputBufferData;
+	OutputBuffer = RHICreateStructuredBuffer(sizeof(FScatterPoint), sizeof(FScatterPoint) * MaxNum, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);		
+}
+void FPointCloudReadBackBuffer::ReadBackToArray(TArray<FScatterPoint>& OutputData)
+{
+	double start = FPlatformTime::Seconds();		
+	uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
+	RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
+	FScatterPoint* Srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * MaxNum, EResourceLockMode::RLM_ReadOnly);
+	OutputData.Reset(Count);
+	OutputData.AddUninitialized(Count);
+	FMemory::Memcpy(OutputData.GetData(), Srcptr, sizeof(FScatterPoint) * Count);
+	RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
 
-	}
-	void ReadBackToArray(TArray<FScatterPoint>& OutputData)
-	{
-		double start = FPlatformTime::Seconds();
-		
-		uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
-		RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
-		FScatterPoint* Srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * MaxNum, EResourceLockMode::RLM_ReadOnly);
-		OutputData.Reset(Count);
-		OutputData.AddUninitialized(Count);
-		FMemory::Memcpy(OutputData.GetData(), Srcptr, sizeof(FScatterPoint) * Count);
-		RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
+	double end = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("ReadBack executed in %f seconds."), end - start);
+}
+void FBiomePipelineContext::InitRenderThreadResource()
+{
+	PlacementMapResource = PlacementMap->GameThread_GetRenderTargetResource();
 
-		double end = FPlatformTime::Seconds();
-		UE_LOG(LogTemp, Warning, TEXT("ReadBack executed in %f seconds."), end - start);
-	}
-};
+	for (UTextureRenderTarget2D* DensityMap : DensityMaps)
+		DensityResources.Add(DensityMap->GameThread_GetRenderTargetResource());
 
+	OutputDistanceFieldResource = OutputDistanceField->GameThread_GetRenderTargetResource();
+	
+}
 static void RealTImeScatterGPU_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FRHITexture2D* DensityTexture,
@@ -122,7 +119,6 @@ static void RealTImeScatterGPU_RenderThread(
 	float RadiusScale,
 	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
-	TArray<FScatterPoint>& OutputPointCloud,
 	FPointCloudReadBackBuffer& PointCloudReadBackBuffer
 )
 {
@@ -189,28 +185,6 @@ static void RealTImeScatterGPU_RenderThread(
 
 	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(DirtyCellNumber.X, DirtyCellNumber.Y, 1));
 
-	//PointCloudReadBackBuffer.ReadBackToArray(OutputPointCloud);
-	//double start = FPlatformTime::Seconds();
-
-	//uint32 Count = *(uint32*)RHILockStructuredBuffer(InstanceCountBuffer, 0, sizeof(uint32), EResourceLockMode::RLM_ReadOnly);
-	//
-	//double end1 = FPlatformTime::Seconds();
-	//UE_LOG(LogTemp, Warning, TEXT("ReadBackCount executed in %f seconds."), end1 - start);
-	       
-	//RHIUnlockStructuredBuffer(InstanceCountBuffer.GetReference());
-	//if (Count != 0)
-	//{
-	//	TArray<FScatterPoint>& OutputData = OutputPointCloud;
-	//	OutputData.Reset(Count);
-	//	OutputData.AddUninitialized(Count);
-	//	FScatterPoint* srcptr = (FScatterPoint*)RHILockStructuredBuffer(OutputBuffer, 0, sizeof(FScatterPoint) * Maxnum, EResourceLockMode::RLM_ReadOnly);
-	//	//
-	//	FMemory::Memcpy(OutputData.GetData(), srcptr, sizeof(FScatterPoint) * Count);
-	//	RHIUnlockStructuredBuffer(OutputBuffer.GetReference());
-	//	//
-	//}
-	//double end2 = FPlatformTime::Seconds();
-	//UE_LOG(LogTemp, Warning, TEXT("ReadBackPointCloud executed in %f seconds."), end2 - end1);
 	
 }
 static void JumpFlood_RenderThread(
@@ -221,6 +195,7 @@ static void JumpFlood_RenderThread(
 	float LengthScale,
 	ERHIFeatureLevel::Type FeatureLevel)
 {
+	return;
 	TShaderMapRef<FJFAInitCS>JFAInitCS(GetGlobalShaderMap(FeatureLevel));
 	FJFAInitCS::FParameters JFAInitParams;
 	TShaderMapRef<FJFAStepCS>JFAStepCS(GetGlobalShaderMap(FeatureLevel));
@@ -303,7 +278,7 @@ void ScatterFoliagePass_RenderThread(
 	const TArray<FSpeciesProxy>& InData,
 	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
-	TArray<FScatterPointCloud>& OutputPointCloud
+	TArray<FPointCloudReadBackBuffer>& ReadBackBuffers
 )
 {
 	check(IsInRenderingThread());
@@ -352,7 +327,6 @@ void ScatterFoliagePass_RenderThread(
 		FeatureLevel
 	);
 	end = FPlatformTime::Seconds();
-	TArray<FPointCloudReadBackBuffer> ReadBackBuffers;
 
 	UE_LOG(LogTemp, Warning, TEXT("Placement JumpFlood excute in %f seconds."), end - start);
 	for (int i = 0; i < InData.Num(); i++)
@@ -380,7 +354,6 @@ void ScatterFoliagePass_RenderThread(
 			RadiusScale,
 			FlipY,
 			FeatureLevel,
-			OutputPointCloud[i].ScatterPoints,
 			ReadBackBuffers.Last()
 		);
 
@@ -402,38 +375,57 @@ void ScatterFoliagePass_RenderThread(
 		end = FPlatformTime::Seconds();
 		UE_LOG(LogTemp, Warning, TEXT("Collision SDF JumpFlood excute in %f seconds."), end - start);
 	}
-	for (int i = 0; i < InData.Num(); i++)
-	{
-		ReadBackBuffers[i].ReadBackToArray(OutputPointCloud[i].ScatterPoints);
-	}
-	FRHICopyTextureInfo CopyInfo;
-	CopyInfo.Size.X = TexSize.X;
-	CopyInfo.Size.Y = TexSize.Y;
-	CopyInfo.Size.Z = 1;
+	//FRHICopyTextureInfo CopyInfo;
+	//CopyInfo.Size.X = TexSize.X;
+	//CopyInfo.Size.Y = TexSize.Y;
+	//CopyInfo.Size.Z = 1;
 	//RHICmdList.CopyTexture(PlacementSDFRT, SDFTexture, CopyInfo);
 	
 }
-void UReaTimeScatterLibrary::RealTImeScatterGPU(
+
+void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, TArray<FBiomePipelineContext>& BiomePipelineContext)
+{
+	double start = FPlatformTime::Seconds();
+	
+	
+	for (FBiomePipelineContext& Context : BiomePipelineContext)
+	{
+		ScatterFoliagePass_RenderThread
+		(
+			RHICmdList,
+			Context.PlacementMapResource,
+			Context.DensityResources,
+			Context.OutputDistanceFieldResource,
+			Context.Pattern,
+			Context.TotalRect,
+			Context.DirtyRect,
+			Context.SpeciesProxys,
+			false,
+			FeatureLevel,
+			Context.ReadBackBuffers
+		);
+	}
+
+	double end = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("Dispatch executed in %f seconds."), end - start);
+	
+	start = FPlatformTime::Seconds();
+	for (FBiomePipelineContext& Context : BiomePipelineContext)
+	{
+		for (int i = 0; i < Context.ScatterPointCloud.Num();i++)
+		{
+			Context.ReadBackBuffers[i].ReadBackToArray(Context.ScatterPointCloud[i].ScatterPoints);
+		}
+	}
+	end = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Warning, TEXT("Total ReadBack executed in %f seconds."), end - start);
+}
+void UReaTimeScatterLibrary::BiomeGeneratePipeline(
 	UObject* WorldContextObject,
-	UTextureRenderTarget2D* PlacementMap,
-	TArray<UTextureRenderTarget2D*> DensityMaps,
-	UTextureRenderTarget2D* OutputDistanceField, 
-	FVector4 TotalRect, 
-	FVector4 DirtyRect,
-	const FScatterPattern& Pattern,
-	const TArray<FSpeciesProxy>& InData,
-	TArray<FScatterPointCloud>& Result, 
-	bool FlipY)
+	TArray<FBiomePipelineContext>& BiomePipelineContext
+)
 {
 	check(IsInGameThread());
-
-	FTextureRenderTargetResource* PlacementMapResource = PlacementMap->GameThread_GetRenderTargetResource();
-
-	TArray<FTextureRenderTargetResource*> DensityResources;
-	for(UTextureRenderTarget2D* DensityMap:DensityMaps)
-		DensityResources.Add(DensityMap->GameThread_GetRenderTargetResource());
-	
-	FTextureRenderTargetResource* OutputDistanceFieldResource = OutputDistanceField->GameThread_GetRenderTargetResource();
 
 	//PlacementMap->Resource->GetTexture2DResource
 	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
@@ -441,22 +433,15 @@ void UReaTimeScatterLibrary::RealTImeScatterGPU(
 
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)
 		(
-			[PlacementMapResource, DensityResources, OutputDistanceFieldResource, FeatureLevel,&Pattern, TotalRect, DirtyRect, InData,FlipY,&Result](FRHICommandListImmediate& RHICmdList)
+			[FeatureLevel,&BiomePipelineContext](FRHICommandListImmediate& RHICmdList)
 			{
-				ScatterFoliagePass_RenderThread
+				BiomeGeneratePipeline_RenderThread
 				(
 					RHICmdList,
-					PlacementMapResource,
-					DensityResources,					
-					OutputDistanceFieldResource,
-					Pattern,
-					TotalRect,
-					DirtyRect,
-					InData,
-					FlipY,
 					FeatureLevel,
-					Result
+					BiomePipelineContext
 				);
+
 			}
 	);
 
