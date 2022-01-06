@@ -115,7 +115,6 @@ void FRealTimePCGFoliageEdMode::Enter()
 	{
 		PCGFoliageManager = *ActorIter;		
 	}
-	PaintMID = UMaterialInstanceDynamic::Create(PCGFoliageManager->PaintMaterial, nullptr);
 
 	UE_LOG(LogTemp, Warning, TEXT("The Actor's name is %s"), *PCGFoliageManager->GetName());
 	//TArray<AActor*> PCGFoliageManager;

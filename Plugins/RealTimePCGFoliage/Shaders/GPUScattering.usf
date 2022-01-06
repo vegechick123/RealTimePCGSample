@@ -74,7 +74,7 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     uint2 sdfSize;
     OutputSDF.GetDimensions(sdfSize.x, sdfSize.y);
     FScatterPoint res;
-    if (r > hash1 && hash2 < Ratio && collisionSDF > 0 && placementSDF > 100 * RadiusScale)
+    if (r > hash1 && hash2 < Ratio && collisionSDF > 0 /*&& placementSDF > 100 * RadiusScale*/)
     {
         
         OutputSDF[sdfSize * uv] = 100 * RadiusScale;

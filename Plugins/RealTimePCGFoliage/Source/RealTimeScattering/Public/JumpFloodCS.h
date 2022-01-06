@@ -23,6 +23,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_TEXTURE(Texture2D, InputSeed)
 		SHADER_PARAMETER_UAV(RWTexture2D<uint2>, OutputStepRT)
+		SHADER_PARAMETER(FIntRect, SimulateRect)
 		SHADER_PARAMETER(uint32, Inverse)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -58,6 +59,7 @@ public:
 		SHADER_PARAMETER_TEXTURE(Texture2D, InputSeed)
 		SHADER_PARAMETER_TEXTURE(Texture2D, InputStepRT)
 		SHADER_PARAMETER_UAV(RWTexture2D<uint2>, OutputStepRT)
+		SHADER_PARAMETER(FIntRect, SimulateRect)
 		SHADER_PARAMETER(uint32, Step)
 		SHADER_PARAMETER(uint32, SubstractSeedRadius)
 		SHADER_PARAMETER(float, LengthScale)
@@ -94,6 +96,7 @@ public:
 		SHADER_PARAMETER_TEXTURE(Texture2D, InputSeed)
 		SHADER_PARAMETER_TEXTURE(Texture2D, InputStepRT)
 		SHADER_PARAMETER_UAV(RWTexture2D<float>, OutputSDF)
+		SHADER_PARAMETER(FIntRect, SimulateRect)
 		SHADER_PARAMETER(uint32, SubstractSeedRadius)
 		SHADER_PARAMETER(float, LengthScale)
 	END_SHADER_PARAMETER_STRUCT()

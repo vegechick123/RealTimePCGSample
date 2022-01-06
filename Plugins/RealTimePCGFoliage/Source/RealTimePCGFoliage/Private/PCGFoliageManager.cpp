@@ -21,6 +21,8 @@ APCGFoliageManager::APCGFoliageManager()
 	BiomePreviewMaterial = LoadObject<UMaterial>(this, TEXT("'/RealTimePCGFoliage/Material/M_BiomePreview.M_BiomePreview'"), nullptr, LOAD_None, nullptr);
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
 
+	SceneCaptureHeight = 5000.0f;
+
 	SceneCaptureComponent2D = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2D"));
 	SceneCaptureComponent2D->CreationMethod = EComponentCreationMethod::Native;
 
@@ -29,8 +31,8 @@ APCGFoliageManager::APCGFoliageManager()
 	SceneCaptureComponent2D->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 
 	SceneCaptureComponent2D->SetRelativeRotation(FRotator(-90.0f, 0.0f, -90.0f));
-	SceneCaptureComponent2D->SetRelativeScale3D(FVector(0.01f, 0.01f, 0.01f));
-	SceneCaptureComponent2D->SetRelativeLocation(FVector(0, 0, 1000));
+	SceneCaptureComponent2D->SetRelativeScale3D(FVector(1.0f, 1.0f, 1.0f));
+	SceneCaptureComponent2D->SetRelativeLocation(FVector(0, 0, SceneCaptureHeight));
 
 	SceneCaptureComponent2D->ProjectionType = ECameraProjectionMode::Type::Orthographic;
 	SceneCaptureComponent2D->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
@@ -180,7 +182,9 @@ void APCGFoliageManager::RegenerateBiomeData()
 
 	for (int i = 0; i < Biomes.Num(); i++)
 	{
-		if (BiomeData.Num() < i)
+		if (!Biomes[i])
+			continue;
+		if (BiomeData.Num() <= i)
 		{
 			BiomeData.Add(FBiomeData(this, Biomes[i], TextureSize));
 		}

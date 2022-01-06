@@ -4,8 +4,7 @@ Texture2D<float> InputSeed;
 Texture2D<uint2> InputStepRT;
 RWTexture2D<uint2> OutputStepRT;
 RWTexture2D<float> OutputSDF;
-uint2 StartID;
-
+uint4 SimulateRect;
 uint Inverse;
 uint Step;
 uint SubstractSeedRadius;
@@ -13,18 +12,19 @@ float LengthScale;
 
 uint2 GetTexID(uint2 id)
 {
-    return StartID+id;
+    return SimulateRect.xy + id;
 }
 
 [numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
 void InitStepMain(uint3 id : SV_DispatchThreadID)
 {
-    float inputTexture = InputSeed[id.xy];
+    uint2 TexID = GetTexID(id.xy);
+    float inputTexture = InputSeed[TexID];
     float determin = inputTexture;
     if (Inverse==0)
-        OutputStepRT[id.xy] = determin >= 0.5f ? id.xy : uint2(EMPTY_FLAG, EMPTY_FLAG);
+        OutputStepRT[TexID] = determin >= 0.5f ? TexID : uint2(EMPTY_FLAG, EMPTY_FLAG);
     else
-        OutputStepRT[id.xy] = determin <= 0.5f ? id.xy : uint2(EMPTY_FLAG, EMPTY_FLAG);
+        OutputStepRT[TexID] = determin <= 0.5f ? TexID : uint2(EMPTY_FLAG, EMPTY_FLAG);
 }
 float JFADist(uint2 curID, uint2 seedID)
 {
@@ -56,7 +56,7 @@ uint2 JFAStep(uint2 inputTex, uint2 idxy)
                 if(dx==0&&dy==0)
                     continue;
                 int2 sampleID = int2(dx,dy) * Step+idxy;                
-                sampleID = clamp(sampleID, 0, TexSize - uint2(1, 1));
+                sampleID = clamp(sampleID, SimulateRect.xy, SimulateRect.zw);
                 uint2 newID = InputStepRT[sampleID];
 			    //if had min distance in previous flooding
                 if (newID.x != EMPTY_FLAG)
@@ -78,15 +78,16 @@ uint2 JFAStep(uint2 inputTex, uint2 idxy)
 [numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
 void JFAMain(uint3 id : SV_DispatchThreadID)
 {
-
-    uint2 inputTexture = InputStepRT[id.xy];
-    OutputStepRT[id.xy] = JFAStep(inputTexture, id.xy);
+    uint2 TexID = GetTexID(id.xy);
+    uint2 inputTexture = InputStepRT[TexID];
+    OutputStepRT[TexID.xy] = JFAStep(inputTexture, TexID);
     
 }
 
 [numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
 void SDFOutputMain(uint3 id : SV_DispatchThreadID)
 {
-    OutputSDF[id.xy] = min(JFADist(id.xy, InputStepRT[id.xy]), OutputSDF[id.xy]);
+    uint2 TexID = GetTexID(id.xy);
+    OutputSDF[TexID] = min(JFADist(TexID, InputStepRT[TexID]), OutputSDF[TexID])/*/1000*/;
     
 }

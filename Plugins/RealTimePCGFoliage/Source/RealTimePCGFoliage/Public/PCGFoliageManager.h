@@ -41,6 +41,8 @@ public:
 	UPROPERTY(EditAnywhere)
 	bool ReBuild;
 	UPROPERTY(EditAnywhere)
+	bool SceneCaptureHeight;
+	UPROPERTY(EditAnywhere)
 	FGuid ProceduralGuid;
 	UPROPERTY(EditAnywhere)
 	ALandscape* Landscape;
