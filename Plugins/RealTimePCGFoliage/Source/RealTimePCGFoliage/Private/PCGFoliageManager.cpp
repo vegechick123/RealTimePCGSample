@@ -58,10 +58,6 @@ void APCGFoliageManager::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 	RegenerateBiomeData();
-	if (Landscape != nullptr)
-	{
-		SetActorScale3D(Landscape->GetActorScale3D());
-	}
 	if (ReBuild)
 	{
 		GenerateProceduralContent(false);
@@ -74,7 +70,8 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 #if WITH_EDITOR
 	double start,end;
 	start = FPlatformTime::Seconds();
-	CaptureLandscape();
+	if(AutoCaptureLandscape)
+		CaptureLandscape();
 	end = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("CaptureLandscape executed in %f seconds."), end - start);
 	FVector4 EditedRect;
@@ -82,7 +79,7 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 		EditedRect = GetLandscapeBound();
 
 	start = FPlatformTime::Seconds();
-	TArray<FDesiredFoliageInstance> OutFoliageInstances;
+	TArray<FPotentialInstance> OutFoliageInstances;
 	
 	ExcuteBiomeGeneratePipeline(OutFoliageInstances, EditedCenter, EditedRadius);
 
@@ -97,8 +94,15 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 		}	
 		MaxExtraRadius = FMath::Max(ExtraRadius,MaxExtraRadius);
 	}
-
-	CleanPreviousFoliage(OutFoliageInstances, FVector4(EditedCenter - (MaxExtraRadius + EditedRadius), EditedCenter + (MaxExtraRadius + EditedRadius)));
+	TArray<UFoliageType*> FoliageTypes;
+	for (UBiome* CurrentBiome : Biomes)
+	{
+		for (USpecies* CurrentSpecies :CurrentBiome->Species)
+		{
+			FoliageTypes.Add(CurrentSpecies->FoliageTypes[0]);
+		}
+	}
+	CleanPreviousFoliage(FoliageTypes, FVector4(EditedCenter - (MaxExtraRadius + EditedRadius), EditedCenter + (MaxExtraRadius + EditedRadius)));
 	
 	end = FPlatformTime::Seconds();
 
@@ -106,7 +110,7 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 
 
 	start = FPlatformTime::Seconds();
-	FRealTimePCGFoliageEdMode::AddInstances(GetWorld(),OutFoliageInstances);
+	FRealTimePCGFoliageEdMode::AddPotentialInstances(GetWorld(),OutFoliageInstances);
 	end = FPlatformTime::Seconds();
 	
 	UE_LOG(LogTemp, Warning, TEXT("AddInstances in %f seconds."), end - start);
@@ -130,7 +134,7 @@ TArray<FSpeciesProxy> APCGFoliageManager::CreateSpeciesProxy(UBiome* InBiome)
 }
 
 
-void APCGFoliageManager::ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutInstances) const
+void APCGFoliageManager::ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FPotentialInstance>& OutInstances) const
 {
 
 	for (int i =0;i < ScatterPointCloud.Num();i++)
@@ -144,14 +148,16 @@ void APCGFoliageManager::ConvertToFoliageInstance(UBiome* InBiome,const TArray<F
 			FVector EndRay = StartRay;
 			EndRay.Z -= (HalfHeight * 2.f + 10.f);	//add 10cm to bottom position of raycast. This is needed because volume is usually placed directly on geometry and then you get precision issues
 
-			FDesiredFoliageInstance* DesiredInst = new (OutInstances)FDesiredFoliageInstance(StartRay, EndRay, CurrentSpecies->Radius);
-			DesiredInst->Rotation = FQuat::Identity;
-			DesiredInst->ProceduralGuid = ProceduralGuid;
-			DesiredInst->FoliageType = CurrentSpecies->FoliageTypes[0];
-			DesiredInst->Age = 0;
-			DesiredInst->TraceRadius = 100;
-			DesiredInst->ProceduralVolumeBodyInstance = nullptr;
-			DesiredInst->PlacementMode = EFoliagePlacementMode::Procedural;
+			FDesiredFoliageInstance DesiredInst(StartRay, EndRay, CurrentSpecies->Radius);
+			DesiredInst.Rotation = FQuat::Identity;
+			DesiredInst.ProceduralGuid = ProceduralGuid;
+			DesiredInst.FoliageType = CurrentSpecies->FoliageTypes[0];
+			DesiredInst.Age = 0;
+			DesiredInst.TraceRadius = 100;
+			DesiredInst.ProceduralVolumeBodyInstance = nullptr;
+			DesiredInst.PlacementMode = EFoliagePlacementMode::Procedural;
+
+			FPotentialInstance* PotentialInst = new (OutInstances)FPotentialInstance(Instance.GetLocation(),FVector(0,0,1),nullptr,1.0f,DesiredInst);
 		}
 	}
 }
@@ -160,17 +166,12 @@ void APCGFoliageManager::RemoveProceduralContent(bool InRebuildTree)
 {
 }
 
-void APCGFoliageManager::CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect)
+void APCGFoliageManager::CleanPreviousFoliage(const TArray<UFoliageType*>& CleanFoliageTypes,FVector4 DirtyRect)
 {
 	double start, end;
 	start = FPlatformTime::Seconds();
 
-	TSet<const UFoliageType*> Set;
-	for (FDesiredFoliageInstance Instance: OutFoliageInstances)
-	{		
-		Set.Add(Instance.FoliageType);
-	}
-	for (const UFoliageType* FoliageType : Set)
+	for (const UFoliageType* FoliageType : CleanFoliageTypes)
 	{
 		FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(GetWorld(),ProceduralGuid,FoliageType, DirtyRect);
 	}
@@ -207,31 +208,36 @@ FIntPoint APCGFoliageManager::GetLandscapeSize()
 void APCGFoliageManager::CaptureLandscape()
 {
 	LandscapeDepth = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(LandscapeDepth, "LandscapeDepth", RenderTargetSize, ETextureRenderTargetFormat::RTF_R32f, FLinearColor::Black);
-	LandscapeNormal = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(LandscapeNormal, "LandscapeNormal", RenderTargetSize, ETextureRenderTargetFormat::RTF_RGBA32f, FLinearColor::Black);
-	FTransform LandscapeTransform = Landscape->GetTransform();
-	FVector Scale = LandscapeTransform.GetScale3D();
-
+	LandscapeNormal = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(LandscapeNormal, "LandscapeNormal", RenderTargetSize, ETextureRenderTargetFormat::RTF_RGBA32f, FLinearColor::Black);	
 	
+	FVector Scale = Landscape->GetTransform().GetScale3D();
+	FVector2D Size = FVector2D(Scale.X, Scale.Y) * (GetLandscapeSize());
 
-	const FVector Temp(Scale.X * (float)512, Scale.Y * (float)512, 0.512f);
-	SceneCaptureComponent2D->OrthoWidth = FMath::Max(Temp.X, Temp.Y);
+
+	SceneCaptureComponent2D->OrthoWidth = FMath::Max(Size.X, Size.Y);
+	//Disable Landscape LOD
+	SceneCaptureComponent2D->LODDistanceFactor = 0;
+	UE_LOG(LogTemp, Warning, TEXT("SceneCaptureComponent2D->OrthoWidth %f"), SceneCaptureComponent2D->OrthoWidth);
 
 	SceneCaptureComponent2D->ShowOnlyActors.Empty();
 	SceneCaptureComponent2D->ShowOnlyActorComponents(Landscape);
-	
-
-	SceneCaptureComponent2D->TextureTarget = LandscapeDepth;
-	SceneCaptureComponent2D->CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
-	SceneCaptureComponent2D->CaptureScene();
 	
 	SceneCaptureComponent2D->TextureTarget = LandscapeNormal;
 	SceneCaptureComponent2D->CaptureSource = ESceneCaptureSource::SCS_Normal;
 	SceneCaptureComponent2D->CaptureScene();
 	
+	SceneCaptureComponent2D->TextureTarget = LandscapeDepth;
+	SceneCaptureComponent2D->CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
+	SceneCaptureComponent2D->CaptureScene();
+	//if (!DebugMID)
+	//	DebugMID = UMaterialInstanceDynamic::Create(DebugMaterial,this);
+	//DebugMID->SetTextureParameterValue("Depth", LandscapeDepth);
+	//UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, DistanceField, DebugMID);
+
 	SceneCaptureComponent2D->ShowOnlyActors.Empty();	
 	Modify();
 }
-void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect)
+void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData& InBiomeData, TArray<FPotentialInstance>& OutFoliageInstances,FVector4 DirtyRect)
 {
 	double start, end;
 	start = FPlatformTime::Seconds();
@@ -239,11 +245,11 @@ void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData
 	InBiomeData.FillDensityMaps();
 	for (int i = 0; i < InBiome->Species.Num(); i++)
 	{
-		UMaterialInstanceDynamic* DensityCaculateMID = UMaterialInstanceDynamic::Create(InBiome->Species[i]->DensityCalculateMaterial,GetTransientPackage());
+		UMaterialInstanceDynamic* DensityCaculateMID = UMaterialInstanceDynamic::Create(InBiome->Species[i]->DensityCalculateMaterial,this);
 		
 		TextureCollectComponent->SetUpMID(DensityCaculateMID);
 		
-		DensityCaculateMID->SetScalarParameterValue("CaptureScale", 505.0/512);
+		DensityCaculateMID->SetScalarParameterValue("CaptureScale", 504.0/512);
 		DensityCaculateMID->SetTextureParameterValue("LandscapeNormal", LandscapeNormal);
 		DensityCaculateMID->SetTextureParameterValue("Placement", InBiomeData.PlacementMap); 		
 		DensityCaculateMID->SetTextureParameterValue("Clean", InBiomeData.CleanMaps[i]);
@@ -251,7 +257,7 @@ void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData
 		UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, InBiomeData.DensityMaps[i], DensityCaculateMID);
 	}
 	UMaterialInstanceDynamic* PlacementCopyMID = UMaterialInstanceDynamic::Create(PlacementCopyMaterial,GetTransientPackage());
-	UTextureRenderTarget2D* InitPlacementMap  =RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr,"InitPlacementMap",RenderTargetSize,ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black);
+	UTextureRenderTarget2D* InitPlacementMap  = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr,"InitPlacementMap",RenderTargetSize,ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black);
 	PlacementCopyMID->SetTextureParameterValue("Texture", InBiomeData.PlacementMap);
 	UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, InitPlacementMap, PlacementCopyMID);
 
@@ -265,10 +271,8 @@ void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData
 	
 	TArray<FScatterPointCloud> ScatterPointCloud;
 	ScatterPointCloud.AddDefaulted(SpeciesProxys.Num());
-	TArray<FDesiredFoliageInstance> OutInstances;
-			
-	//UReaTimeScatterLibrary::BiomeGeneratePipeline(this, InitPlacementMap,InBiomeData.DensityMaps, DistanceField,GetLandscapeBound(), DirtyRect, Pattern, SpeciesProxys, ScatterPointCloud, false);
-	
+	TArray<FPotentialInstance> OutInstances;
+					
 	end = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("In SingleBiomeGeneratePipeline Scatter Calculate in %f seconds."), end - start);
 	FTransform WorldTM;
@@ -278,7 +282,7 @@ void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData
 	end = FPlatformTime::Seconds();
 	UE_LOG(LogTemp, Warning, TEXT("In SingleBiomeGeneratePipeline Scatter ConvertToFoliageInstance in %f seconds."), end - start);
 }
-void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FDesiredFoliageInstance>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius)
+void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius)
 {
 	double start, end;
 	TArray<FBiomePipelineContext> BiomePipelineContext;
@@ -294,7 +298,7 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FDesiredFoliageInsta
 
 			TextureCollectComponent->SetUpMID(DensityCaculateMID);
 
-			DensityCaculateMID->SetScalarParameterValue("CaptureScale", 505.0 / 512);
+			DensityCaculateMID->SetScalarParameterValue("CaptureScale", 504.0 / 512);
 			DensityCaculateMID->SetTextureParameterValue("LandscapeNormal", LandscapeNormal);
 			DensityCaculateMID->SetTextureParameterValue("Placement", BiomeData[i].PlacementMap);
 			DensityCaculateMID->SetTextureParameterValue("Clean", BiomeData[i].CleanMaps[j]);
@@ -321,17 +325,17 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FDesiredFoliageInsta
 		CurrentContext.ScatterPointCloud.AddDefaulted(Biomes[i]->Species.Num());
 		CurrentContext.TotalRect = GetLandscapeBound();
 		CurrentContext.DirtyRect = DirtyRect;
+		CurrentContext.BasicHeight = SceneCaptureHeight;
+		CurrentContext.DepthMap = LandscapeDepth;
 		CurrentContext.PlacementMap = InitPlacementMap;
 		CurrentContext.DensityMaps = BiomeData[i].DensityMaps;			
 		CurrentContext.OutputDistanceField = DistanceField;
-
+		CurrentContext.FlipY = false;
 		CurrentContext.InitRenderThreadResource();
 		
 
 	}
-	
 	FlushRenderingCommands();
-
 	start = FPlatformTime::Seconds();
 
 	

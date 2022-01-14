@@ -41,7 +41,9 @@ public:
 	UPROPERTY(EditAnywhere)
 	bool ReBuild;
 	UPROPERTY(EditAnywhere)
-	bool SceneCaptureHeight;
+	bool AutoCaptureLandscape;
+	UPROPERTY(EditAnywhere)
+	float SceneCaptureHeight;
 	UPROPERTY(EditAnywhere)
 	FGuid ProceduralGuid;
 	UPROPERTY(EditAnywhere)
@@ -79,6 +81,10 @@ public:
 	
 	UPROPERTY(VisibleAnywhere, Transient, meta = (Category = "Debug MIDs"))
 	UMaterialInstanceDynamic* DebugDensityMaterial;
+	UPROPERTY(EditAnywhere, meta = (Category = "Debug MIDs"))
+	UMaterialInterface* DebugMaterial;
+	UPROPERTY(EditAnywhere, meta = (Category = "Debug MIDs"))
+	UMaterialInstanceDynamic* DebugMID;
 	UPROPERTY(VisibleAnywhere, meta = (Category = "Debug RenderTarget"))
 	TWeakObjectPtr<UTextureRenderTarget2D> DebugRT;
 
@@ -93,15 +99,15 @@ public:
 	
 	TArray<FSpeciesProxy> CreateSpeciesProxy(UBiome* InBiome);
 	bool GenerateProceduralContent(bool bPartialUpdate = false, FVector2D DirtyCenter = FVector2D(0, 0),float DirtyRadius = 0);
-	void ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FDesiredFoliageInstance>& OutFoliageInstances)const;
+	void ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FPotentialInstance>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
-	void CleanPreviousFoliage(const TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
+	void CleanPreviousFoliage(const TArray<UFoliageType*>& CleanFoliageTypes,FVector4 DirtyRect);
 	UFUNCTION(CallInEditor)
 	void RegenerateBiomeData();
 	UFUNCTION(CallInEditor)
 	void CaptureLandscape();
-	void SingleBiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FDesiredFoliageInstance>& OutFoliageInstances,FVector4 DirtyRect);
-	void ExcuteBiomeGeneratePipeline(TArray<FDesiredFoliageInstance>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius);
+	void SingleBiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FPotentialInstance>& OutFoliageInstances,FVector4 DirtyRect);
+	void ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius);
 	FVector4 GetLandscapeBound();
 	FIntPoint GetLandscapeSize();
 	void DrawPreviewBiomeRenderTarget(UTextureRenderTarget2D* RenderTarget,TArray<FLinearColor> PreviewColors);

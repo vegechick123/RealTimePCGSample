@@ -202,6 +202,9 @@ public:
 	/** Common code for adding instances to world based on settings */
 	static bool AddInstancesImp(UWorld* InWorld,const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances = TArray<int32>(), const FPCGFoliageUISettings* UISettings = nullptr, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter = nullptr, bool InRebuildFoliageTree = true);
 
+	static bool AddPotentialInstances(UWorld* InWorld,const TArray<FPotentialInstance>& PotentialInstances);
+
+	static bool AddPotentialInstancesImp(UWorld* InWorld, const UFoliageType* Settings, const TArray<FPotentialInstance>& PotentialInstances);
 	/** Similar to CalculatePotentialInstances, but it doesn't do any overlap checks which are much harder to thread. Meant to be run in parallel for placing lots of instances */
 	static void CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FPCGFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter);
 

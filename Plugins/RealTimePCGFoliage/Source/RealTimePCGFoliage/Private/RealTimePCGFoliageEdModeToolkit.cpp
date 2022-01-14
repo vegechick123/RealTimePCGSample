@@ -73,6 +73,11 @@ void FRealTimePCGFoliageEdModeToolkit::BuildToolPalette(FName PaletteName, FTool
 	}
 }
 
+void FRealTimePCGFoliageEdModeToolkit::CleanSlate()
+{
+	PCGFoliageEdWidget = nullptr;
+}
+
 UBiome* FRealTimePCGFoliageEdModeToolkit::GetSelectBiome()
 {
 	TArray<TSharedPtr<FBiomeModel>> Result = PCGFoliageEdWidget->Palette->BiomeListView->GetSelectedItems();

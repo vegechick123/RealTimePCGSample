@@ -100,6 +100,7 @@ void FBiomePipelineContext::InitRenderThreadResource()
 {
 	PlacementMapResource = PlacementMap->GameThread_GetRenderTargetResource();
 
+	DepthMapResource = DepthMap->GameThread_GetRenderTargetResource();
 	for (UTextureRenderTarget2D* DensityMap : DensityMaps)
 		DensityResources.Add(DensityMap->GameThread_GetRenderTargetResource());
 
@@ -109,10 +110,12 @@ void FBiomePipelineContext::InitRenderThreadResource()
 static void RealTImeScatterGPU_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FRHITexture2D* DensityTexture,
+	FRHITexture2D* DepthTexture,
 	FRHITexture2D* PlacementSDFTexture,
 	FRHITexture2D* InputSDFTexture,
 	FUnorderedAccessViewRHIRef SDFSeedUAV,
 	const FScatterPattern& Pattern,
+	float BasicHeight,
 	FVector4 TotalRect,
 	FVector4 SimulateRect,
 	FVector4 DirtyRect,
@@ -171,17 +174,21 @@ static void RealTImeScatterGPU_RenderThread(
 	Params.PatternSize = Pattern.Size;
 	Params.PatternPointNum = Pattern.PointCloud.Num();
 	Params.InputTexture = DensityTexture;
+	Params.DepthTexture = DepthTexture;
 	Params.PlacementSDF = PlacementSDFTexture;
 	Params.InputSDF = InputSDFTexture;
 	Params.OutputSDF = SDFSeedUAV;
 	Params.LinearSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 	Params.CenterOffset = StartCell;
+	Params.BasicHeight = BasicHeight;
 	Params.TotalRect = TotalRect;
 	Params.ClipRect = DirtyRect;
 	Params.Ratio = Ratio;
 	Params.RadiusScale = RadiusScale;
 	Params.FlipY = FlipY ? 1 : 0;	
 	Params.OutputPointCloud = OutputBufferUAV;
+
+	UE_LOG(LogTemp, Warning, TEXT("StartCell :%s \n TotalRect: %s \n DirtyCellNumber: %s\n"), *StartCell.ToString(), *TotalRect.ToString(), *DirtyCellNumber.ToString());
 
 	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(DirtyCellNumber.X, DirtyCellNumber.Y, 1));
 
@@ -216,11 +223,6 @@ static void JumpFlood_RenderThread(
 
 	FIntRect IntSimulateRect = FIntRect(StartGroup * GroupSize, EndGroup * GroupSize-FIntPoint(1,1));
 
-	//IntSimulateRect.Min.X = FMath::Max(0, IntSimulateRect.Min.X);
-	//IntSimulateRect.Min.X = FMath::Max(0, IntSimulateRect.Min.X);
-	//IntSimulateRect.Max.X = FMath::Min((int)InputSeedTexture->GetSizeX() - 1, IntSimulateRect.Max.X);
-	//IntSimulateRect.Max.X = FMath::Min((int)InputSeedTexture->GetSizeY() - 1, IntSimulateRect.Max.Y);
-
 	TShaderMapRef<FJFAInitCS>JFAInitCS(GetGlobalShaderMap(FeatureLevel));
 	FJFAInitCS::FParameters JFAInitParams;
 	TShaderMapRef<FJFAStepCS>JFAStepCS(GetGlobalShaderMap(FeatureLevel));
@@ -248,8 +250,6 @@ static void JumpFlood_RenderThread(
 	GroupCount.Y = EndGroup.Y - StartGroup.Y;
 	GroupCount.Z = 1;
 
-	//FGPUFenceRHIRef Fence = RHICmdList.CreateGPUFence(FName("111"));
-	//JFAInitCS->Fence
 	FComputeShaderUtils::Dispatch(RHICmdList, JFAInitCS, JFAInitParams, GroupCount);
 	//Debug
 
@@ -261,8 +261,7 @@ static void JumpFlood_RenderThread(
 	JFAStepParams.SimulateRect = IntSimulateRect;
 	JFAStepParams.SubstractSeedRadius = SubstractSeedRadius ? 1 : 0;
 	JFAStepParams.LengthScale = LengthScale;
-	int count = 5;
-	while (Step >= 1/*&&--count>0*/)
+	while (Step >= 1)
 	{
 		if (!PingPong)
 		{
@@ -300,23 +299,14 @@ static void JumpFlood_RenderThread(
 
 void ScatterFoliagePass_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
-	FTextureRenderTargetResource* PlacementResources,
-	TArray<FTextureRenderTargetResource*> DensityResources,
-	FTextureRenderTargetResource* SDFResource,
-	const FScatterPattern& Pattern,
-	FVector4 TotalRect,
-	FVector4 DirtyRect,
-	const TArray<FSpeciesProxy>& InData,
-	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
-	TArray<FPointCloudReadBackBuffer>& ReadBackBuffers,
-	TArray<FScatterPointCloud>& ScatterPointCloud
+	FBiomePipelineContext& Context		
 )
 {
 	check(IsInRenderingThread());
 
 	
-	FRHITexture2D* SDFTexture = SDFResource->GetRenderTargetTexture();
+	FRHITexture2D* SDFTexture = Context.OutputDistanceFieldResource->GetRenderTargetTexture();
 	
 
 	FIntPoint TexSize = SDFTexture->GetSizeXY();
@@ -344,65 +334,75 @@ void ScatterFoliagePass_RenderThread(
 	Params.Value = 1e16;
 	FComputeShaderUtils::Dispatch(RHICmdList, UAVCleanCS, Params, GroupCount);
 
-	float LengthScale = TotalRect.Z - TotalRect.X;
+	float LengthScale = Context.TotalRect.Z - Context.TotalRect.X;
 	
 	double start, end;
 	start = FPlatformTime::Seconds();
 
 	float MaxSpeciesRadiusScale = 0;
-	for (int i = 0; i < InData.Num(); i++)
+	for (int i = 0; i < Context.SpeciesProxys.Num(); i++)
 	{
-		MaxSpeciesRadiusScale = FMath::Max(InData[i].Radius, MaxSpeciesRadiusScale);//float RadiusScale = InData[i].Radius;
+		MaxSpeciesRadiusScale = FMath::Max(Context.SpeciesProxys[i].Radius, MaxSpeciesRadiusScale);
 	}
 	
-	FVector4 SimulateRect = DirtyRect + FVector4(-MaxSpeciesRadiusScale, MaxSpeciesRadiusScale, -MaxSpeciesRadiusScale, MaxSpeciesRadiusScale) * 100;
+	FVector4 SimulateRect = Context.DirtyRect + FVector4(-MaxSpeciesRadiusScale, MaxSpeciesRadiusScale, -MaxSpeciesRadiusScale, MaxSpeciesRadiusScale) * 100;
 	
-	SimulateRect.X = FMath::Max(SimulateRect.X, TotalRect.X);
-	SimulateRect.Y = FMath::Max(SimulateRect.Y, TotalRect.Y);
-	SimulateRect.Z = FMath::Min(SimulateRect.Z, TotalRect.Z);
-	SimulateRect.W = FMath::Min(SimulateRect.W, TotalRect.W);
+	SimulateRect.X = FMath::Max(SimulateRect.X, Context.TotalRect.X);
+	SimulateRect.Y = FMath::Max(SimulateRect.Y, Context.TotalRect.Y);
+	SimulateRect.Z = FMath::Min(SimulateRect.Z, Context.TotalRect.Z);
+	SimulateRect.W = FMath::Min(SimulateRect.W, Context.TotalRect.W);
 
 	JumpFlood_RenderThread
 	(
 		RHICmdList,
-		PlacementResources->GetRenderTargetTexture(),
+		Context.PlacementMapResource->GetRenderTargetTexture(),
 		PlacementSDFRTUAV,
-		TotalRect,
+		Context.TotalRect,
 		SimulateRect,
 		false,
 		LengthScale,
 		FeatureLevel 
 	);
+	//uint32 Stride;
+	//RHILockTexture2D(PlacementSDFRT, 0, EResourceLockMode::RLM_ReadOnly, Stride, false);
+	//FRHICopyTextureInfo CopyInfo;
+	//CopyInfo.Size.X = TexSize.X;
+	//CopyInfo.Size.Y = TexSize.Y;
+	//CopyInfo.Size.Z = 1;
+	//RHICmdList.CopyTexture(PlacementSDFRT, SDFTexture, CopyInfo);
+	//RHIUnlockTexture2D(PlacementSDFRT, 0, false);
 	end = FPlatformTime::Seconds();
 
 	UE_LOG(LogTemp, Warning, TEXT("Placement JumpFlood excute in %f seconds."), end - start);
-	for (int i = 0; i < InData.Num(); i++)
+	for (int i = 0; i < Context.SpeciesProxys.Num(); i++)
 	{
 	
 		//Generate Point Cloud Data
-		float Ratio=InData[i].Ratio;
-		float RadiusScale= InData[i].Radius;
+		float Ratio= Context.SpeciesProxys[i].Ratio;
+		float RadiusScale= Context.SpeciesProxys[i].Radius;
 		
 		start = FPlatformTime::Seconds();
 
-		ReadBackBuffers.AddDefaulted();
+		Context.ReadBackBuffers.AddDefaulted();
 		
 		RealTImeScatterGPU_RenderThread
 		(
 			RHICmdList,
-			DensityResources[i]->GetRenderTargetTexture(),
+			Context.DensityResources[i]->GetRenderTargetTexture(),
+			Context.DepthMapResource->GetRenderTargetTexture(),
 			PlacementSDFRT,
 			OutputSDFRT,
 			SDFSeedTextureUAV,
-			Pattern,
-			TotalRect,
+			Context.Pattern,
+			Context.BasicHeight,
+			Context.TotalRect,
 			SimulateRect,
-			DirtyRect,
+			Context.DirtyRect,
 			Ratio,
 			RadiusScale,
-			FlipY,
+			Context.FlipY,
 			FeatureLevel,
-			ReadBackBuffers.Last()
+			Context.ReadBackBuffers.Last()
 		);
 
 		end = FPlatformTime::Seconds();
@@ -415,7 +415,7 @@ void ScatterFoliagePass_RenderThread(
 			RHICmdList,
 			SDFSeedTexture,
 			OutputSDFRTUAV,
-			TotalRect,
+			Context.TotalRect,
 			SimulateRect,
 			true,
 			LengthScale,
@@ -430,14 +430,7 @@ void ScatterFoliagePass_RenderThread(
 	{
 		ReadBackBuffers[i].ReadBackToArray(ScatterPointCloud[i].ScatterPoints);
 	}*/
-	/*uint32 Stride;
-	RHILockTexture2D(PlacementSDFRT, 0, EResourceLockMode::RLM_ReadOnly, Stride, false);*/
-	//FRHICopyTextureInfo CopyInfo;
-	//CopyInfo.Size.X = TexSize.X;
-	//CopyInfo.Size.Y = TexSize.Y;
-	//CopyInfo.Size.Z = 1;
-	//RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
-	//RHIUnlockTexture2D(PlacementSDFRT, 0, false);
+	
 }
 
 void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, TArray<FBiomePipelineContext>& BiomePipelineContext)
@@ -447,20 +440,15 @@ void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ER
 	
 	for (FBiomePipelineContext& Context : BiomePipelineContext)
 	{
+		//Context.PlacementMapResource->FlushDeferredResourceUpdate(RHICmdList);
+		//for(FTextureRenderTargetResource* DensityResource : Context.DensityResources)
+		//	DensityResource->FlushDeferredResourceUpdate(RHICmdList);
+
 		ScatterFoliagePass_RenderThread
 		(
 			RHICmdList,
-			Context.PlacementMapResource,
-			Context.DensityResources,
-			Context.OutputDistanceFieldResource,
-			Context.Pattern,
-			Context.TotalRect,
-			Context.DirtyRect,
-			Context.SpeciesProxys,
-			false,
 			FeatureLevel,
-			Context.ReadBackBuffers,
-			Context.ScatterPointCloud
+			Context
 		);
 	}
 
@@ -494,6 +482,8 @@ void UReaTimeScatterLibrary::BiomeGeneratePipeline(
 		(
 			[FeatureLevel,&BiomePipelineContext](FRHICommandListImmediate& RHICmdList)
 			{
+				
+
 				BiomeGeneratePipeline_RenderThread
 				(
 					RHICmdList,

@@ -27,6 +27,7 @@ public:
 	virtual void GetToolPaletteNames(TArray<FName>& InPaletteName) const;
 	virtual FText GetToolPaletteDisplayName(FName PaletteName) const;
 	virtual void BuildToolPalette(FName PaletteName, class FToolBarBuilder& ToolbarBuilder);
+	void CleanSlate();
 	UBiome* GetSelectBiome();
 	USpecies* GetSelectSpecies();
 

@@ -4,16 +4,19 @@ struct FScatterPoint
 {
     float LocationX;
     float LocationY;
+    float LocarionZ;
 };
 RWStructuredBuffer<uint> InstanceCountBuffer;
 float2 InputPattern[64];
 float2 PatternSize;
 uint PatternPointNum;
 Texture2D<float> InputTexture;
+Texture2D<float> DepthTexture;
 Texture2D<float> PlacementSDF;
 Texture2D<float> InputSDF;
 RWTexture2D<float> OutputSDF;
 SamplerState LinearSampler;
+float BasicHeight;
 uint2 CenterOffset;
 float4 TotalRect;
 float4 ClipRect;
@@ -62,7 +65,6 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     {
         return;
     }
-    
     float r = saturate(InputTexture.SampleLevel(LinearSampler, uv, 0));
     float placementSDF = PlacementSDF.SampleLevel(LinearSampler, uv, 0);
     float collisionSDF = saturate(InputSDF.SampleLevel(LinearSampler, uv, 0));
@@ -74,7 +76,7 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     uint2 sdfSize;
     OutputSDF.GetDimensions(sdfSize.x, sdfSize.y);
     FScatterPoint res;
-    if (r > hash1 && hash2 < Ratio && collisionSDF > 0 /*&& placementSDF > 100 * RadiusScale*/)
+    if (r > hash1 && hash2 < Ratio && collisionSDF > 0 && placementSDF > 100 * RadiusScale)
     {
         
         OutputSDF[sdfSize * uv] = 100 * RadiusScale;
@@ -85,6 +87,7 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
         InterlockedAdd(InstanceCountBuffer[0], 1, curindex);
         res.LocationX = pos.x;
         res.LocationY = pos.y;
+        res.LocarionZ = 5000.0f - DepthTexture.SampleLevel(LinearSampler, uv, 0);
         OutputPointCloud[curindex] = res;
         
     }

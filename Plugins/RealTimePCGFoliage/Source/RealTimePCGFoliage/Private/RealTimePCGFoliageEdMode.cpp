@@ -75,7 +75,7 @@ FRealTimePCGFoliageEdMode::FRealTimePCGFoliageEdMode()
 	BrushLocation = FVector::ZeroVector;
 
 	PaintMID = UMaterialInstanceDynamic::Create(LoadObject<UMaterial>(nullptr, TEXT("/RealTimePCGFoliage/Material/M_PaintBrush.M_PaintBrush"), nullptr, LOAD_None, nullptr), GetTransientPackage());
-	BiomePreviewRenderTarget = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(BiomePreviewRenderTarget,"BiomePreviewRenderTarget",FIntPoint(128,128),ETextureRenderTargetFormat::RTF_RGBA8,FLinearColor::Black);
+	BiomePreviewRenderTarget = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr,"BiomePreviewRenderTarget",FIntPoint(128,128),ETextureRenderTargetFormat::RTF_RGBA8,FLinearColor::Black);
 	// Get the default opacity from the material.
 	FName OpacityParamName("OpacityAmount");
 	BrushMID->GetScalarParameterValue(OpacityParamName, DefaultBrushOpacity);
@@ -93,7 +93,7 @@ void FRealTimePCGFoliageEdMode::AddReferencedObjects(FReferenceCollector& Collec
 	Collector.AddReferencedObject(SphereBrushComponent);
 	Collector.AddReferencedObject(PaintMID);
 	Collector.AddReferencedObject(BiomePreviewRenderTarget);
-	if(PaintRTCache!=nullptr)
+	if(PaintRTCache)
 		Collector.AddReferencedObject(PaintRTCache);
 }
 void FRealTimePCGFoliageEdMode::Enter()
@@ -133,6 +133,8 @@ void FRealTimePCGFoliageEdMode::Exit()
 	// Remove the brush
 	SphereBrushComponent->UnregisterComponent();
 	PCGFoliageManager = nullptr;
+	//PaintMID->ClearParameterValues();
+	//PaintRTCache.R
 	// Call base Exit method to ensure proper cleanup
 	FEdMode::Exit();
 }
@@ -761,6 +763,47 @@ bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageT
 	return bPlacedInstances;
 }
 
+bool FRealTimePCGFoliageEdMode::AddPotentialInstances(UWorld* InWorld,const TArray<FPotentialInstance>& PotentialInstances)
+{
+	TMap<const UFoliageType*, TArray<FPotentialInstance>> SettingsInstancesMap;
+	for (const FPotentialInstance& DesiredInst : PotentialInstances)
+	{
+		TArray<FPotentialInstance>& Instances = SettingsInstancesMap.FindOrAdd(DesiredInst.DesiredInstance.FoliageType);
+		Instances.Add(DesiredInst);
+	}
+	for (auto It = SettingsInstancesMap.CreateConstIterator(); It; ++It)
+	{
+		const UFoliageType* FoliageType = It.Key();
+
+		const TArray<FPotentialInstance>& Instances = It.Value();
+		AddPotentialInstancesImp(InWorld, FoliageType, Instances);
+	}
+	return true;
+}
+
+bool FRealTimePCGFoliageEdMode::AddPotentialInstancesImp(UWorld* InWorld, const UFoliageType* Settings,const TArray<FPotentialInstance>& PotentialInstances)
+{
+	bool bPlacedInstances = false;
+	int AdditionalInstances = PotentialInstances.Num();
+	TArray<FFoliageInstance> PlacedInstances;
+	PlacedInstances.Reserve(AdditionalInstances);
+	for (const FPotentialInstance& PotentialInstance : PotentialInstances)
+	{
+		FFoliageInstance Inst;
+		if (const_cast<FPotentialInstance&>(PotentialInstance).PlaceInstance(InWorld, Settings, Inst))
+		{
+			Inst.ProceduralGuid = PotentialInstance.DesiredInstance.ProceduralGuid;
+			Inst.BaseComponent = PotentialInstance.HitComponent;
+			//Inst.
+			PlacedInstances.Add(MoveTemp(Inst));
+			bPlacedInstances = true;
+		}
+
+	}
+	SpawnFoliageInstance(InWorld, Settings, PlacedInstances);
+	return true;
+}
+
 void FRealTimePCGFoliageEdMode::CalculatePotentialInstances_ThreadSafe(const UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>* DesiredInstances, TArray<FPotentialInstance>& OutPotentialInstances, const FPCGFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter)
 {
 	double start = FPlatformTime::Seconds();
@@ -818,7 +861,6 @@ APCGFoliageManager* FRealTimePCGFoliageEdMode::GetPCGFoliageManager(bool bCreate
 UBiome* FRealTimePCGFoliageEdMode::GetEditedBiome()
 {
 	return ((FRealTimePCGFoliageEdModeToolkit*)Toolkit.Get())->GetSelectBiome();
-	//return GetPCGFoliageManager()->Biomes[0];
 }
 
 USpecies* FRealTimePCGFoliageEdMode::GetEditedSpecies()

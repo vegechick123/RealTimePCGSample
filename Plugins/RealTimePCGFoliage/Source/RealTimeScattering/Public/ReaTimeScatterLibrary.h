@@ -12,9 +12,10 @@ struct FScatterPoint
 {
 	float LocationX;
 	float LocationY;
-	FVector2D Location()const
+	float LocationZ;
+	FVector GetLocation()const
 	{
-		return FVector2D(LocationX, LocationY);
+		return FVector(LocationX, LocationY, LocationZ);
 	}
 };
 USTRUCT(BlueprintType)
@@ -52,10 +53,14 @@ struct REALTIMESCATTERING_API FBiomePipelineContext
 	TArray<FScatterPointCloud> ScatterPointCloud;
 	FVector4 TotalRect;
 	FVector4 DirtyRect;
+	UTextureRenderTarget2D* DepthMap;
+	float BasicHeight;
 	UTextureRenderTarget2D* PlacementMap;
 	TArray<UTextureRenderTarget2D*> DensityMaps;
 	UTextureRenderTarget2D* OutputDistanceField;
+	bool FlipY;
 	//Render Thread Resource
+	FTextureRenderTargetResource* DepthMapResource;
 	FTextureRenderTargetResource* PlacementMapResource;
 	TArray<FTextureRenderTargetResource*> DensityResources;
 	FTextureRenderTargetResource* OutputDistanceFieldResource;

@@ -15,6 +15,7 @@
 
 FSpeceiesModel::FSpeceiesModel(USpecies* InSpecies, UTexture2D* InTexture):Species(InSpecies), Texture(InTexture)
 {
+	// TODO: SlateBrush对纹理的强引用导致某些情况下会发生内存泄漏，应手动管理SlateBrush的生命周期
 	if(Texture!=nullptr)
 		SlateBrush = FDeferredCleanupSlateBrush::CreateBrush(Texture.Get(),FVector2D(64,64));	
 }
