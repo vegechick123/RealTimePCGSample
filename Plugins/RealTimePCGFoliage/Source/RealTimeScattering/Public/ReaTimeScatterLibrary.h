@@ -123,10 +123,10 @@ public :
 		Result.PointCloud.Add(FVector2D(684.537902832, 285.854034424));
 		Result.PointCloud.Add(FVector2D(373.783935547, 419.274719238));
 		Result.PointCloud.Add(FVector2D(420.446716309, 120.303367615));
-		Result.PointCloud.Add(FVector2D(508.510314941, 21.8121051788));
+		Result.PointCloud.Add(FVector2D(513.510314941, 33.8121051788));
 		Result.PointCloud.Add(FVector2D(549.304199219, 578.881469727));
 		Result.PointCloud.Add(FVector2D(734.299804688, 748.891113281));
-		Result.PointCloud.Add(FVector2D(760.079589844, 173.802597046));
+		Result.PointCloud.Add(FVector2D(740.079589844, 173.802597046));
 		Result.PointCloud.Add(FVector2D(658.208618164, 592.188171387));
 		Result.PointCloud.Add(FVector2D(356.469970703, 285.391174316));
 		Result.PointCloud.Add(FVector2D(637.091552734, 494.443237305));

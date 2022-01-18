@@ -49,10 +49,10 @@ bool FBiomeData::CheckBiome(UBiome* InBiome)const
 	return true;
 }
 
-void FBiomeData::FillDensityMaps()
+void FBiomeData::FillDensityMaps(FIntPoint InitPlacementMapResolution)
 {
 
-
+	InitPlacementMap = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(InitPlacementMap, "InitPlacementMap", InitPlacementMapResolution, ETextureRenderTargetFormat::RTF_R32f, FLinearColor::Black);
 	for (int i = DensityMaps.Num(); i < CleanMaps.Num(); i++)
 	{
 		DensityMaps.Add(RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr, "DensityMap", TexSize,ETextureRenderTargetFormat::RTF_R32f,FLinearColor::Black));

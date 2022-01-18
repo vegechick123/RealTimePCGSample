@@ -114,8 +114,7 @@ void FRealTimePCGFoliageEdMode::Enter()
 	for (TActorIterator<APCGFoliageManager> ActorIter(GetWorld()); ActorIter; ++ActorIter)
 	{
 		PCGFoliageManager = *ActorIter;		
-	}
-
+	}	
 	UE_LOG(LogTemp, Warning, TEXT("The Actor's name is %s"), *PCGFoliageManager->GetName());
 	//TArray<AActor*> PCGFoliageManager;
 	//UGameplayStatics::GetAllActorsOfClass(GetWorld(), ALandscape::StaticClass(), PCGFoliageManager)

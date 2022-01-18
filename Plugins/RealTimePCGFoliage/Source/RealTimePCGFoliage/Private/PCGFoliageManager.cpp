@@ -242,7 +242,7 @@ void APCGFoliageManager::SingleBiomeGeneratePipeline(UBiome* InBiome, FBiomeData
 	double start, end;
 	start = FPlatformTime::Seconds();
 
-	InBiomeData.FillDensityMaps();
+	//InBiomeData.FillDensityMaps();
 	for (int i = 0; i < InBiome->Species.Num(); i++)
 	{
 		UMaterialInstanceDynamic* DensityCaculateMID = UMaterialInstanceDynamic::Create(InBiome->Species[i]->DensityCalculateMaterial,this);
@@ -290,7 +290,7 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>&
 	{
 		BiomePipelineContext.AddDefaulted();
 
-		BiomeData[i].FillDensityMaps();
+		BiomeData[i].FillDensityMaps(RenderTargetSize);
 		for (int j = 0; j < Biomes[i]->Species.Num(); j++)
 		{
 
@@ -305,10 +305,9 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>&
 			DebugDensityMaterial = DensityCaculateMID;
 			UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, BiomeData[i].DensityMaps[j], DensityCaculateMID);
 		}
-		UMaterialInstanceDynamic* PlacementCopyMID = UMaterialInstanceDynamic::Create(PlacementCopyMaterial, GetTransientPackage());
-		UTextureRenderTarget2D* InitPlacementMap = RealTimePCGUtils::GetOrCreateTransientRenderTarget2D(nullptr, "InitPlacementMap", RenderTargetSize, ETextureRenderTargetFormat::RTF_R32f, FLinearColor::Black);
+		UMaterialInstanceDynamic* PlacementCopyMID = UMaterialInstanceDynamic::Create(PlacementCopyMaterial, GetTransientPackage());		
 		PlacementCopyMID->SetTextureParameterValue("Texture", BiomeData[i].PlacementMap);
-		UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, InitPlacementMap, PlacementCopyMID);
+		UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, BiomeData[i].InitPlacementMap, PlacementCopyMID);
 
 		
 		float ExtraRadius = 0;
@@ -327,7 +326,7 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>&
 		CurrentContext.DirtyRect = DirtyRect;
 		CurrentContext.BasicHeight = SceneCaptureHeight;
 		CurrentContext.DepthMap = LandscapeDepth;
-		CurrentContext.PlacementMap = InitPlacementMap;
+		CurrentContext.PlacementMap = BiomeData[i].InitPlacementMap;
 		CurrentContext.DensityMaps = BiomeData[i].DensityMaps;			
 		CurrentContext.OutputDistanceField = DistanceField;
 		CurrentContext.FlipY = false;

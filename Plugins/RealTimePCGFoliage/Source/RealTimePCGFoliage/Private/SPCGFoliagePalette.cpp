@@ -13,58 +13,126 @@
 #define LOCTEXT_NAMESPACE "FoliageEd_Mode"
 
 
-FSpeceiesModel::FSpeceiesModel(USpecies* InSpecies, UTexture2D* InTexture):Species(InSpecies), Texture(InTexture)
+FSpeceiesModel::FSpeceiesModel(USpecies* InSpecies, UTexture2D* InCleanMap, UTextureRenderTarget2D* InDensityMap):Species(InSpecies), CleanMap(InCleanMap), DensityMap(InDensityMap)
 {
 	// TODO: SlateBrush对纹理的强引用导致某些情况下会发生内存泄漏，应手动管理SlateBrush的生命周期
-	if(Texture!=nullptr)
-		SlateBrush = FDeferredCleanupSlateBrush::CreateBrush(Texture.Get(),FVector2D(64,64));	
+	if(InCleanMap !=nullptr)
+		CleanMapSlateBrush = FDeferredCleanupSlateBrush::CreateBrush(CleanMap.Get(),FVector2D(64,64));
+	if (InDensityMap != nullptr)
+		DensityMapSlateBrush = FDeferredCleanupSlateBrush::CreateBrush(DensityMap.Get(), FVector2D(64, 64));
 }
 
-TSharedRef<SWidget> FSpeceiesModel::CreateWidget(TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const
+TSharedRef<SWidget> FSpeceiesModel::CreateWidget() const
 {
-	return SNew(STextBlock)
-		.Text(FText::FromString(Species->GetName()));
+	return SNew(SBox)
+		.VAlign(VAlign_Center)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(Species->GetName()))
+		];
+		
 }
 
-TSharedRef<SWidget> FSpeceiesModel::CreateCleanRTPreview() const
+TSharedRef<SWidget> FSpeceiesModel::CreateCleanMapPreview() const
 {
 	const FSlateBrush* SlateBrushPtr;
-	SlateBrushPtr = FDeferredCleanupSlateBrush::TrySlateBrush(SlateBrush);
+	SlateBrushPtr = FDeferredCleanupSlateBrush::TrySlateBrush(CleanMapSlateBrush);
 	if (!SlateBrushPtr)
 		SlateBrushPtr=FEditorStyle::GetDefaultBrush();
 
-	return SNew(SImage)
-		.Image(SlateBrushPtr);
+	return SNew(SBox)
+		.WidthOverride(70)
+		.HeightOverride(70)
+		.MaxAspectRatio(1)
+		.HAlign(EHorizontalAlignment::HAlign_Center)
+		.VAlign(EVerticalAlignment::VAlign_Center)
+		[
+			SNew(SImage)
+			.Image(SlateBrushPtr)
+		];
 }
+
+TSharedRef<SWidget> FSpeceiesModel::CreateDensityMapPreview() const
+{
+	const FSlateBrush* SlateBrushPtr;
+	SlateBrushPtr = FDeferredCleanupSlateBrush::TrySlateBrush(DensityMapSlateBrush);
+	if (!SlateBrushPtr)
+		SlateBrushPtr = FEditorStyle::GetDefaultBrush();
+
+	return SNew(SBox)
+		.WidthOverride(70)
+		.HeightOverride(70)
+		.MaxAspectRatio(1)
+		.HAlign(EHorizontalAlignment::HAlign_Center)
+		.VAlign(EVerticalAlignment::VAlign_Center)
+		[
+			SNew(SImage)
+			.Image(SlateBrushPtr)
+		
+		];
+}
+
+class SSpeciesDetailRow : public SMultiColumnTableRow<TSharedPtr<FSpeceiesModel>>
+{
+	SLATE_BEGIN_ARGS(SSpeciesDetailRow) {}
+		SLATE_ARGUMENT(TSharedPtr<FSpeceiesModel>, Item)
+	SLATE_END_ARGS()
+public:
+	void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTableView)
+	{
+		Item = InArgs._Item;
+		FSuperRowType::Construct(FSuperRowType::FArguments()
+			.Padding(0)
+			, InOwnerTableView);
+	}
+public: // override SMultiColumnTableRow
+	virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& ColumnName) override
+	{
+		if (ColumnName == TEXT("Name"))//判断列名为Type，次名称在创建View时，通过SHeaderRow::Column指定
+		{
+			return Item->CreateWidget();
+		}
+		else if (ColumnName == TEXT("DensityMap"))
+		{
+			return Item->CreateDensityMapPreview();
+		}
+		else
+		{
+			return Item->CreateCleanMapPreview();
+		}
+	}
+private:
+	TSharedPtr<FSpeceiesModel> Item;
+};
 
 TSharedRef<ITableRow> SPCGFoliagePalette::GenerateRowForSpeciesList(TSharedPtr<FSpeceiesModel> Item, const TSharedRef<STableViewBase>& OwnerTable)
 {
-	FString A = Item->Species.IsValid() ? Item->Species->GetName() : FString("nullptr");
-	FString B = Item->Texture.IsValid() ? Item->Texture->GetName() : FString("nullptr");
-	return	
-		SNew(STableRow<TSharedPtr<FSpeceiesModel>>, OwnerTable)
-		.Padding(2.0f)		
-		[			
-			SNew(SHorizontalBox)			
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				Item->CreateWidget(ThumbnailPool)
-				
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				Item->CreateCleanRTPreview()
-			]			
-		];
+	return SNew(SSpeciesDetailRow, OwnerTable)
+		.Item(Item);
+	//return	
+	//	SNew(STableRow<TSharedPtr<FSpeceiesModel>>, OwnerTable)
+	//	.Padding(2.0f)		
+	//	[			
+	//		SNew(SHorizontalBox)			
+	//		+ SHorizontalBox::Slot()
+	//		.AutoWidth()
+	//		.VAlign(VAlign_Center)
+	//		[
+	//			Item->CreateWidget()
+	//			
+	//		]
+	//		+ SHorizontalBox::Slot()
+	//		.AutoWidth()
+	//		.HAlign(HAlign_Center)
+	//		.VAlign(VAlign_Center)
+	//		[
+	//			Item->CreateCleanMapPreview()
+	//		]			
+	//	];
 }
 TSharedRef<ITableRow> SPCGFoliagePalette::GenerateRowForBiomeList(TSharedPtr<FBiomeModel> Item, const TSharedRef<STableViewBase>& OwnerTable)
 {
-	return SNew(STableRow<TSharedPtr<FSpeceiesModel>>, OwnerTable)
+	return SNew(STableRow<TSharedPtr<FBiomeModel>>, OwnerTable)
 		.Padding(2.0f)
 		[
 			SNew(SHorizontalBox)
@@ -123,13 +191,14 @@ void SPCGFoliagePalette::RefreshSpeceiesModels()
 		return;
 
 	TArray<USpecies*>& Species = EditedBiome->Species;
-	TArray<UTexture2D*>& CleanRTs = EdMode->GetEditedBiomeData()->CleanMaps;
-	int Num = FMath::Max(CleanRTs.Num(), Species.Num());
+	TArray<UTexture2D*>& CleanMaps = EdMode->GetEditedBiomeData()->CleanMaps;
+	TArray<UTextureRenderTarget2D*>& DensityMaps = EdMode->GetEditedBiomeData()->DensityMaps;
+	int Num = FMath::Max(CleanMaps.Num(), Species.Num());
 	for (int i = 0; i < Num; i++)
 	{
 		USpecies* SpeciesPtr= i < Species.Num()? Species[i]:nullptr;
 
-		TSharedPtr<FSpeceiesModel> Model = MakeShareable(new FSpeceiesModel(SpeciesPtr, CleanRTs[i]));
+		TSharedPtr<FSpeceiesModel> Model = MakeShareable(new FSpeceiesModel(SpeciesPtr, CleanMaps[i], i<DensityMaps.Num()?DensityMaps[i]:nullptr));
 		SpeceiesModels.Add(Model);
 	}
 	SpeceiesListView->RequestListRefresh();
@@ -206,9 +275,20 @@ void SPCGFoliagePalette::Construct(const FArguments& InArgs)
 			[
 				SAssignNew(SpeceiesListView, SListView<TSharedPtr<FSpeceiesModel>>)
 				.OnGenerateRow(this, &SPCGFoliagePalette::GenerateRowForSpeciesList)
-				.ItemHeight(64)
+				.ItemHeight(96)
 				.ListItemsSource(&SpeceiesModels)
 				.IsEnabled(EdMode,&FRealTimePCGFoliageEdMode::GetPaintSpecies)
+				.HeaderRow
+				(
+					SNew(SHeaderRow)
+					+ SHeaderRow::Column("Name")
+					.DefaultLabel(FText::FromString(TEXT("Name")))
+					+ SHeaderRow::Column("DensityMap")
+					.DefaultLabel(FText::FromString(TEXT("DensityMap")))
+					+ SHeaderRow::Column("CleanMap")
+					.DefaultLabel(FText::FromString(TEXT("CleanMap")))
+
+				)
 			]
 		]
 	];

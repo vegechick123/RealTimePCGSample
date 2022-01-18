@@ -10,11 +10,14 @@
 struct FSpeceiesModel
 {
 	TWeakObjectPtr<USpecies> Species;
-	TWeakObjectPtr<UTexture2D> Texture;
-	TSharedPtr<FDeferredCleanupSlateBrush> SlateBrush;
-	FSpeceiesModel(USpecies* InSpecies, UTexture2D* InTexture);
-	TSharedRef<SWidget> CreateWidget(TSharedPtr<FAssetThumbnailPool> InThumbnailPool)const;
-	TSharedRef<SWidget> CreateCleanRTPreview()const;
+	TWeakObjectPtr<UTexture2D> CleanMap;
+	TWeakObjectPtr<UTextureRenderTarget2D> DensityMap;
+	TSharedPtr<FDeferredCleanupSlateBrush> DensityMapSlateBrush;
+	TSharedPtr<FDeferredCleanupSlateBrush> CleanMapSlateBrush;
+	FSpeceiesModel(USpecies* InSpecies, UTexture2D* InCleanMap,UTextureRenderTarget2D* InDensityMap);
+	TSharedRef<SWidget> CreateWidget()const;
+	TSharedRef<SWidget> CreateCleanMapPreview()const;
+	TSharedRef<SWidget> CreateDensityMapPreview()const;
 };
 struct FBiomeModel
 {

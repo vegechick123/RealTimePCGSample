@@ -30,8 +30,11 @@ struct FBiomeData
 	TWeakObjectPtr<UBiome> Biome;
 	UPROPERTY(Transient,VisibleAnywhere)
 	TArray<UTextureRenderTarget2D*> DensityMaps;
+	UPROPERTY(Transient, VisibleAnywhere)
+	UTextureRenderTarget2D* InitPlacementMap;
+
 	FBiomeData();
 	FBiomeData(UObject* Outer, UBiome* InBiome, FIntPoint InTexSize);
 	bool CheckBiome(UBiome* InBiome) const;
-	void FillDensityMaps();
+	void FillDensityMaps(FIntPoint InitPlacementMapResolution);
 };
