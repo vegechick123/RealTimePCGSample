@@ -56,13 +56,14 @@ void APCGFoliageManager::Tick(float DeltaTime)
 
 void APCGFoliageManager::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	Super::PostEditChangeProperty(PropertyChangedEvent);
 	RegenerateBiomeData();
 	if (ReBuild)
 	{
 		GenerateProceduralContent(false);
 		ReBuild = false;
 	}
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	
 }
 
 bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2D EditedCenter, float EditedRadius)
@@ -76,7 +77,10 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 	UE_LOG(LogTemp, Warning, TEXT("CaptureLandscape executed in %f seconds."), end - start);
 	FVector4 EditedRect;
 	if (!bPartialUpdate)
-		EditedRect = GetLandscapeBound();
+	{
+		EditedCenter = FVector2D(0, 0);
+		EditedRadius = GetLandscapeSize().X/2*100;
+	}
 
 	start = FPlatformTime::Seconds();
 	TArray<FPotentialInstance> OutFoliageInstances;
@@ -114,6 +118,9 @@ bool APCGFoliageManager::GenerateProceduralContent(bool bPartialUpdate, FVector2
 	end = FPlatformTime::Seconds();
 	
 	UE_LOG(LogTemp, Warning, TEXT("AddInstances in %f seconds."), end - start);
+
+	 
+
 	return true;
 #endif
 	return false;
@@ -302,7 +309,8 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>&
 			DensityCaculateMID->SetTextureParameterValue("LandscapeNormal", LandscapeNormal);
 			DensityCaculateMID->SetTextureParameterValue("Placement", BiomeData[i].PlacementMap);
 			DensityCaculateMID->SetTextureParameterValue("Clean", BiomeData[i].CleanMaps[j]);
-			DebugDensityMaterial = DensityCaculateMID;
+			if(j==0)
+				DebugDensityMaterial = DensityCaculateMID;
 			UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, BiomeData[i].DensityMaps[j], DensityCaculateMID);
 		}
 		UMaterialInstanceDynamic* PlacementCopyMID = UMaterialInstanceDynamic::Create(PlacementCopyMaterial, GetTransientPackage());		
@@ -350,6 +358,22 @@ void APCGFoliageManager::ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>&
 	{
 		ConvertToFoliageInstance(Biomes[i], BiomePipelineContext[i].ScatterPointCloud, WorldTM, 2000, OutFoliageInstances);
 	}
+
+	TArray<FVector2D> ThesisData;
+	
+	for (int j = 0; j < BiomePipelineContext[0].ScatterPointCloud.Num(); j++)
+	{
+		FString ThesisDataResult;
+		for (FScatterPoint Temp : BiomePipelineContext[0].ScatterPointCloud[j].ScatterPoints)
+		{
+			ThesisData.Add(FVector2D(Temp.LocationX, Temp.LocationY));
+			ThesisDataResult += FString::Printf(TEXT("[%.9f,%.9f],"), Temp.LocationX / 31.5 + 800, Temp.LocationY / 31.5 + 800);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("%s"), *ThesisDataResult);
+	}
+	UMaterialInstanceDynamic* SDFMID = UMaterialInstanceDynamic::Create(DistanceFieldMaterial,this);
+	SDFMID->SetTextureParameterValue("SDF", DistanceField);
+	UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, DistanceFieldPreview, SDFMID);
 }
 FVector4 APCGFoliageManager::GetLandscapeBound()
 {

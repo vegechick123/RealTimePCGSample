@@ -345,7 +345,7 @@ void ScatterFoliagePass_RenderThread(
 		MaxSpeciesRadiusScale = FMath::Max(Context.SpeciesProxys[i].Radius, MaxSpeciesRadiusScale);
 	}
 	
-	FVector4 SimulateRect = Context.DirtyRect + FVector4(-MaxSpeciesRadiusScale, MaxSpeciesRadiusScale, -MaxSpeciesRadiusScale, MaxSpeciesRadiusScale) * 100;
+	FVector4 SimulateRect = Context.DirtyRect + FVector4(-MaxSpeciesRadiusScale, -MaxSpeciesRadiusScale, MaxSpeciesRadiusScale, MaxSpeciesRadiusScale) * 100;
 	
 	SimulateRect.X = FMath::Max(SimulateRect.X, Context.TotalRect.X);
 	SimulateRect.Y = FMath::Max(SimulateRect.Y, Context.TotalRect.Y);
@@ -365,11 +365,7 @@ void ScatterFoliagePass_RenderThread(
 	);
 	//uint32 Stride;
 	//RHILockTexture2D(PlacementSDFRT, 0, EResourceLockMode::RLM_ReadOnly, Stride, false);
-	//FRHICopyTextureInfo CopyInfo;
-	//CopyInfo.Size.X = TexSize.X;
-	//CopyInfo.Size.Y = TexSize.Y;
-	//CopyInfo.Size.Z = 1;
-	//RHICmdList.CopyTexture(PlacementSDFRT, SDFTexture, CopyInfo);
+	
 	//RHIUnlockTexture2D(PlacementSDFRT, 0, false);
 	end = FPlatformTime::Seconds();
 
@@ -421,15 +417,19 @@ void ScatterFoliagePass_RenderThread(
 			LengthScale,
 			FeatureLevel
 		);
-
+		if (i == 0)
+		{
+			FRHICopyTextureInfo CopyInfo;
+			CopyInfo.Size.X = TexSize.X;
+			CopyInfo.Size.Y = TexSize.Y;
+			CopyInfo.Size.Z = 1;
+			RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
+		}
 		end = FPlatformTime::Seconds();
 		UE_LOG(LogTemp, Warning, TEXT("Collision SDF JumpFlood excute in %f seconds."), end - start);
 	}
+	
 
-	/*for (int i = 0; i < ScatterPointCloud.Num(); i++)
-	{
-		ReadBackBuffers[i].ReadBackToArray(ScatterPointCloud[i].ScatterPoints);
-	}*/
 	
 }
 
@@ -440,10 +440,6 @@ void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ER
 	
 	for (FBiomePipelineContext& Context : BiomePipelineContext)
 	{
-		//Context.PlacementMapResource->FlushDeferredResourceUpdate(RHICmdList);
-		//for(FTextureRenderTargetResource* DensityResource : Context.DensityResources)
-		//	DensityResource->FlushDeferredResourceUpdate(RHICmdList);
-
 		ScatterFoliagePass_RenderThread
 		(
 			RHICmdList,

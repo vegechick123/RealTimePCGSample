@@ -67,19 +67,18 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     }
     float r = saturate(InputTexture.SampleLevel(LinearSampler, uv, 0));
     float placementSDF = PlacementSDF.SampleLevel(LinearSampler, uv, 0);
-    float collisionSDF = saturate(InputSDF.SampleLevel(LinearSampler, uv, 0));
+    float collisionSDF = InputSDF.SampleLevel(LinearSampler, uv, 0);
     
     float hash1 = frac(dot(hashSeed.zyy * (hashSeed.xxy + float3(43.1275, 11.418, -17.1634)) / 3.91, float3(12.739, 3.1415926, 35.12)));
-    float hash2 = frac(dot(hashSeed.xyz * (hashSeed.zxy + float3(2.17501, 69.175501, 109.345)) / 1.73, float3(20.390625, 60.703125, 2.4281209)));
     
     uint curindex;
     uint2 sdfSize;
     OutputSDF.GetDimensions(sdfSize.x, sdfSize.y);
     FScatterPoint res;
-    if (r > hash1 && hash2 < Ratio && collisionSDF > 0 && placementSDF > 100 * RadiusScale)
+    if (r * Ratio > hash1 && collisionSDF > 50 * RadiusScale && placementSDF > 50 * RadiusScale)
     {
         
-        OutputSDF[sdfSize * uv] = 100 * RadiusScale;
+        OutputSDF[sdfSize * uv] = 50 * RadiusScale;
         if (InRect(pos, ClipRect))
         {
             return;
@@ -87,7 +86,7 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
         InterlockedAdd(InstanceCountBuffer[0], 1, curindex);
         res.LocationX = pos.x;
         res.LocationY = pos.y;
-        res.LocarionZ = 5000.0f - DepthTexture.SampleLevel(LinearSampler, uv, 0);
+        res.LocarionZ = BasicHeight - DepthTexture.SampleLevel(LinearSampler, uv, 0);
         OutputPointCloud[curindex] = res;
         
     }

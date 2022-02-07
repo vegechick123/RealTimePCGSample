@@ -59,19 +59,24 @@ public:
 	UPROPERTY(EditAnywhere)
 	TArray<UBiome*> Biomes;
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly)
 	TArray<FBiomeData> BiomeData;
 	
 	UPROPERTY(VisibleAnywhere)
 	UMaterialInterface* PlacementCopyMaterial;
 	
-	UPROPERTY(VisibleAnywhere, Transient)
+	UPROPERTY(VisibleAnywhere, Transient, BlueprintReadOnly)
 	UTextureRenderTarget2D* LandscapeDepth;
-	UPROPERTY(VisibleAnywhere, Transient)
+	UPROPERTY(VisibleAnywhere, Transient,BlueprintReadOnly)
 	UTextureRenderTarget2D* LandscapeNormal;
 	
 	UPROPERTY(EditAnywhere)
 	UTextureRenderTarget2D* DistanceField;
+	UPROPERTY(EditAnywhere)
+	UMaterialInterface* DistanceFieldMaterial;
+	UPROPERTY(EditAnywhere)
+	UTextureRenderTarget2D* DistanceFieldPreview;
+
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* PaintMaterial;
 	UPROPERTY(VisibleAnywhere, meta = (Category = "Brush Materials"))

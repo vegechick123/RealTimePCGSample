@@ -16,21 +16,21 @@ public:
 	UPROPERTY(EditAnywhere)
 	TArray<USpecies*> Species;
 };
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FBiomeData
 {
 	GENERATED_BODY()
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UTexture2D* PlacementMap;
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TArray<UTexture2D*> CleanMaps;
 	UPROPERTY()
 	FIntPoint TexSize;
 	UPROPERTY()
 	TWeakObjectPtr<UBiome> Biome;
-	UPROPERTY(Transient,VisibleAnywhere)
+	UPROPERTY(Transient,VisibleAnywhere, BlueprintReadOnly)
 	TArray<UTextureRenderTarget2D*> DensityMaps;
-	UPROPERTY(Transient, VisibleAnywhere)
+	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly)
 	UTextureRenderTarget2D* InitPlacementMap;
 
 	FBiomeData();

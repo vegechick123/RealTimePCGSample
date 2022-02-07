@@ -15,7 +15,7 @@ FBiomeData::FBiomeData(UObject* Outer,UBiome* InBiome, FIntPoint InTexSize)
 	Biome = InBiome;
 	auto CreateTexture = [this,Outer](FName Name)
 	{
-		UTexture2D* NewTexture = NewObject<UTexture2D>(Outer, MakeUniqueObjectName(GetTransientPackage(), UTexture2D::StaticClass(), Name));
+		UTexture2D* NewTexture = NewObject<UTexture2D>(Outer, MakeUniqueObjectName(Outer, UTexture2D::StaticClass(), Name));
 		
 
 		NewTexture->Source.Init(TexSize.X, TexSize.Y, 1, 1, ETextureSourceFormat::TSF_G8);
@@ -35,7 +35,8 @@ FBiomeData::FBiomeData(UObject* Outer,UBiome* InBiome, FIntPoint InTexSize)
 	for (int i = 0; i < Biome->Species.Num(); i++)
 		CleanMaps.Add(CreateTexture(FName(Biome->GetName() + "CleanRT" + FString::FromInt(i))));
 
-
+	DensityMaps = TArray<UTextureRenderTarget2D*>();
+	InitPlacementMap = nullptr;
 }
 
 bool FBiomeData::CheckBiome(UBiome* InBiome)const
