@@ -20,7 +20,11 @@ public:
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* DensityCalculateMaterial;
 	UPROPERTY(EditAnywhere)
-	float Radius;
+	float MaxRadius;
 	UPROPERTY(EditAnywhere)
-	float Ratio;
+	float MaxRandomScale = 1;
+	UPROPERTY(EditAnywhere)
+	float MinRandomScale = 1;
+	UPROPERTY(EditAnywhere)
+	float Ratio = 1;
 };

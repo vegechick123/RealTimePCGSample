@@ -41,6 +41,8 @@ public:
 		SHADER_PARAMETER(FVector4, TotalRect)
 		SHADER_PARAMETER(FVector4, ClipRect)
 		SHADER_PARAMETER(float, Ratio)
+		SHADER_PARAMETER(float, MaxRandomScale)
+		SHADER_PARAMETER(float, MinRandomScale)
 		SHADER_PARAMETER(float, RadiusScale)
 		SHADER_PARAMETER(uint32, FlipY)
 		SHADER_PARAMETER_UAV(RWStructuredBuffer<FScatterPoint>, OutputPointCloud)

@@ -407,17 +407,16 @@ bool FRealTimePCGFoliageEdMode::InputKey(FEditorViewportClient* ViewportClient, 
 
 		if (IsCtrlDown(Viewport))
 		{
-			// Control + scroll adjusts the brush radius
-			static const float RadiusAdjustmentAmount = 25.f;
+
 			if (Key == EKeys::MouseScrollUp)
 			{
-				AdjustBrushRadius(RadiusAdjustmentAmount);
+				AdjustBrushRadius(2);
 
 				bHandled = true;
 			}
 			else if (Key == EKeys::MouseScrollDown)
 			{
-				AdjustBrushRadius(-RadiusAdjustmentAmount);
+				AdjustBrushRadius(0.5f);
 
 				bHandled = true;
 			}
@@ -530,10 +529,10 @@ void FRealTimePCGFoliageEdMode::ApplyBrush(FEditorViewportClient* ViewportClient
 
 void FRealTimePCGFoliageEdMode::AdjustBrushRadius(float Multiplier)
 {
-	const float PercentageChange = 0.05f;
+
 	const float CurrentBrushRadius = UISettings.GetRadius();
 
-	float NewValue = CurrentBrushRadius * (1 + PercentageChange * Multiplier);
+	float NewValue = CurrentBrushRadius *  Multiplier;
 	UISettings.SetRadius(FMath::Clamp(NewValue, 0.1f, 8192.0f));
 }
 
@@ -640,6 +639,8 @@ void FRealTimePCGFoliageEdMode::CleanProcedualFoliageInstance(UWorld* InWorld,FG
 {
 
 	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InWorld->GetCurrentLevel());
+	if (!IFA)
+		return;
 	FFoliageInfo* Info =  IFA->FindInfo(FoliageType);
 	if (Info)
 	{
@@ -683,9 +684,8 @@ void FRealTimePCGFoliageEdMode::AddInstances(UWorld* InWorld, const TArray<FDesi
 	}
 }
 
-static void SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, const TArray<FFoliageInstance>& PlacedInstances)
+void FRealTimePCGFoliageEdMode::SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, const TArray<FFoliageInstance>& PlacedInstances)
 {
-	double start = FPlatformTime::Seconds();
 
 	AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(InWorld, true);
 	UFoliageType* FoliageType = const_cast<UFoliageType*>(Settings);
@@ -704,9 +704,7 @@ static void SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, 
 
 	IFA->RegisterAllComponents();
 
-	double end1 = FPlatformTime::Seconds();
 
-	UE_LOG(LogTemp, Warning, TEXT("SpawnFoliageInstance in %f seconds."), end1 - start);
 }
 
 bool FRealTimePCGFoliageEdMode::AddInstancesImp(UWorld* InWorld, const UFoliageType* Settings, const TArray<FDesiredFoliageInstance>& DesiredInstances, const TArray<int32>& ExistingInstances, const FPCGFoliageUISettings* UISettings, const FFoliagePaintingGeometryFilter* OverrideGeometryFilter, bool InRebuildFoliageTree)

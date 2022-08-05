@@ -104,7 +104,7 @@ public:
 	
 	TArray<FSpeciesProxy> CreateSpeciesProxy(UBiome* InBiome);
 	bool GenerateProceduralContent(bool bPartialUpdate = false, FVector2D DirtyCenter = FVector2D(0, 0),float DirtyRadius = 0);
-	void ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<FPotentialInstance>& OutFoliageInstances)const;
+	void ConvertToFoliageInstance(UBiome* InBiome,const TArray<FScatterPointCloud>& ScatterPointCloud, const FTransform& WorldTM, const float HalfHeight, TArray<TArray<FFoliageInstance>>& OutFoliageInstances)const;
 	void RemoveProceduralContent(bool InRebuildTree = true);
 	void CleanPreviousFoliage(const TArray<UFoliageType*>& CleanFoliageTypes,FVector4 DirtyRect);
 	UFUNCTION(CallInEditor)
@@ -112,7 +112,7 @@ public:
 	UFUNCTION(CallInEditor)
 	void CaptureLandscape();
 	void SingleBiomeGeneratePipeline(UBiome* Biome, FBiomeData& InBiomeData, TArray<FPotentialInstance>& OutFoliageInstances,FVector4 DirtyRect);
-	void ExcuteBiomeGeneratePipeline(TArray<FPotentialInstance>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius);
+	FRenderCommandFence ExcuteBiomeGeneratePipeline(TArray<TArray<FFoliageInstance>>& OutFoliageInstances, FVector2D EditedCenter, float EditedRadius);
 	FVector4 GetLandscapeBound();
 	FIntPoint GetLandscapeSize();
 	void DrawPreviewBiomeRenderTarget(UTextureRenderTarget2D* RenderTarget,TArray<FLinearColor> PreviewColors);

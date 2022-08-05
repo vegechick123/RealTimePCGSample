@@ -9,60 +9,7 @@
 #include "RenderGraphUtils.h"
 #include "Async/ParallelFor.h"
 #include "ClearQuad.h"
-#include "KdTree.h"
 
-void UReaTimeScatterLibrary::RealTImeScatter(const TArray<FColor>& ColorData, FIntPoint TextureSize, FVector2D BottomLeft, FVector2D TopRight, const FScatterPattern& Pattern, TArray<FVector2D>& Result, float RadiusScale, float Ratio, bool FlipY)
-{
-	TArray<TPair<bool, FVector2D>> MultithreadResult;
-	FVector2D Size = TopRight - BottomLeft;
-	FVector2D Temp = Size / (Pattern.Size * RadiusScale);
-	int PerPointsCnt = Pattern.PointCloud.Num();
-	FIntPoint CellNumber = FIntPoint(ceilf(Temp.X), ceilf(Temp.Y));
-	int Total = CellNumber.X * CellNumber.Y;
-	MultithreadResult.AddUninitialized(Total * Pattern.PointCloud.Num());
-	ParallelFor(Total, [&](int index)
-		{
-			int i = index / CellNumber.X;
-			int j = index % CellNumber.X;
-			FVector2D Center = (FVector2D(j, i));//0~CellNumber
-			for (int k = 0; k < Pattern.PointCloud.Num(); k++)
-			{
-				int ResultIndex = index * Pattern.PointCloud.Num() + k;
-				MultithreadResult[ResultIndex].Key = false;
-				FVector2D Pos = (Center * Pattern.Size + Pattern.PointCloud[k]) * RadiusScale;
-				if (!(Pos.X < 0 || Pos.X >= Size.X || Pos.Y < 0 || Pos.Y >= Size.Y))
-				{
-					FVector2D uv = Pos / Size; //0...1
-					if (FlipY)
-						uv.Y=1-uv.Y;
-					FVector2D Temp = FVector2D(uv.Y, uv.X) * TextureSize;
-					
-					
-					FIntPoint TexturePos = FIntPoint(floor(Temp.X), floor(Temp.Y));
-
-					float hash1 = FMath::Frac(FVector::DotProduct(FVector(k, j, j) * FVector(i, i, j) / 3.91, FVector(12.739, 3.1415926, 35.12)));
-					float hash2 = FMath::Frac(FVector::DotProduct(FVector(i, j, k) * FVector(k, i, j) / 1.73, FVector(20.390625, 60.703125, 2.4281209)));
-					int TextureIndex = TexturePos.X * TextureSize.Y + TexturePos.Y;
-					if ((ColorData[TextureIndex].R * 1.0f) / 255 > hash1 && hash2 < Ratio)
-					{
-						MultithreadResult[ResultIndex].Key = true;
-						MultithreadResult[ResultIndex].Value = Pos+BottomLeft;
-					}
-				}
-			}
-		}, false);
-	for (TPair<bool, FVector2D> var : MultithreadResult)
-	{
-		if (var.Key)
-		{
-			Result.Add(var.Value);
-		}
-	};
-	
-
-	
-
-}
 void FPointCloudReadBackBuffer::InitBuffer(int32 InMaxNum)
 {
 	MaxNum = InMaxNum;
@@ -120,6 +67,8 @@ static void RealTImeScatterGPU_RenderThread(
 	FVector4 SimulateRect,
 	FVector4 DirtyRect,
 	float Ratio,
+	float MaxRandomScale,
+	float MinRandomScale,
 	float RadiusScale,
 	bool FlipY,
 	ERHIFeatureLevel::Type FeatureLevel,
@@ -184,11 +133,13 @@ static void RealTImeScatterGPU_RenderThread(
 	Params.TotalRect = TotalRect;
 	Params.ClipRect = DirtyRect;
 	Params.Ratio = Ratio;
+	Params.MaxRandomScale = MaxRandomScale;
+	Params.MinRandomScale = MinRandomScale;
 	Params.RadiusScale = RadiusScale;
 	Params.FlipY = FlipY ? 1 : 0;	
 	Params.OutputPointCloud = OutputBufferUAV;
 
-	UE_LOG(LogTemp, Warning, TEXT("StartCell :%s \n TotalRect: %s \n DirtyCellNumber: %s\n"), *StartCell.ToString(), *TotalRect.ToString(), *DirtyCellNumber.ToString());
+	//UE_LOG(LogTemp, Warning, TEXT("StartCell :%s \n TotalRect: %s \n DirtyCellNumber: %s\n"), *StartCell.ToString(), *TotalRect.ToString(), *DirtyCellNumber.ToString());
 
 	FComputeShaderUtils::Dispatch(RHICmdList, GPUScatteringCS, Params, FIntVector(DirtyCellNumber.X, DirtyCellNumber.Y, 1));
 
@@ -368,19 +319,29 @@ void ScatterFoliagePass_RenderThread(
 	
 	//RHIUnlockTexture2D(PlacementSDFRT, 0, false);
 	end = FPlatformTime::Seconds();
+	
 
-	UE_LOG(LogTemp, Warning, TEXT("Placement JumpFlood excute in %f seconds."), end - start);
+	//UE_LOG(LogTemp, Warning, TEXT("Placement JumpFlood excute in %f seconds."), end - start);
 	for (int i = 0; i < Context.SpeciesProxys.Num(); i++)
 	{
 	
 		//Generate Point Cloud Data
 		float Ratio= Context.SpeciesProxys[i].Ratio;
+		float MaxRandomScale = Context.SpeciesProxys[i].MaxRandomScale;
+		float MinRandomScale = Context.SpeciesProxys[i].MinRandomScale;
 		float RadiusScale= Context.SpeciesProxys[i].Radius;
 		
 		start = FPlatformTime::Seconds();
 
 		Context.ReadBackBuffers.AddDefaulted();
-		
+		//FRenderQueryRHIRef PointCloudGenerateQuery = RHICmdList.CreateRenderQuery(ERenderQueryType::RQT_AbsoluteTime);
+		//FRenderQueryPoolRHIRef RenderQueryPool = RHICreateRenderQueryPool(ERenderQueryType::RQT_AbsoluteTime, 3);
+
+		//FRHIPooledRenderQuery PooledQuery1 = RenderQueryPool->AllocateQuery();
+		//FRHIPooledRenderQuery PooledQuery2 = RenderQueryPool->AllocateQuery();
+		//FRHIPooledRenderQuery PooledQuery3 = RenderQueryPool->AllocateQuery();
+
+		//RHICmdList.EndRenderQuery(PooledQuery1.GetQuery());
 		RealTImeScatterGPU_RenderThread
 		(
 			RHICmdList,
@@ -395,38 +356,48 @@ void ScatterFoliagePass_RenderThread(
 			SimulateRect,
 			Context.DirtyRect,
 			Ratio,
+			MaxRandomScale,
+			MinRandomScale,
 			RadiusScale,
 			Context.FlipY,
 			FeatureLevel,
 			Context.ReadBackBuffers.Last()
 		);
-
-		end = FPlatformTime::Seconds();
-		UE_LOG(LogTemp, Warning, TEXT("Point Cloud Generate excute in %f seconds."), end - start);
-
-		start = FPlatformTime::Seconds();
+		//RHICmdList.EndRenderQuery(PooledQuery2.GetQuery());
+		
+		
 		//Generate Collision SDF
-		JumpFlood_RenderThread
-		(
-			RHICmdList,
-			SDFSeedTexture,
-			OutputSDFRTUAV,
-			Context.TotalRect,
-			SimulateRect,
-			true,
-			LengthScale,
-			FeatureLevel
-		);
-		if (i == 0)
+		if (i < Context.SpeciesProxys.Num() - 1)
 		{
-			FRHICopyTextureInfo CopyInfo;
-			CopyInfo.Size.X = TexSize.X;
-			CopyInfo.Size.Y = TexSize.Y;
-			CopyInfo.Size.Z = 1;
-			RHICmdList.CopyTexture(OutputSDFRT, SDFTexture, CopyInfo);
+			JumpFlood_RenderThread
+			(
+				RHICmdList,
+				SDFSeedTexture,
+				OutputSDFRTUAV,
+				Context.TotalRect,
+				SimulateRect,
+				true,
+				LengthScale,
+				FeatureLevel
+			);
 		}
+		//RHICmdList.EndRenderQuery(PooledQuery3.GetQuery());
+
 		end = FPlatformTime::Seconds();
-		UE_LOG(LogTemp, Warning, TEXT("Collision SDF JumpFlood excute in %f seconds."), end - start);
+		UE_LOG(LogTemp, Warning, TEXT("Species %d dispatch in %f seconds."),i, end - start);
+
+		//uint64 time1, time2, time3;
+
+		//RHICmdList.GetRenderQueryResult(PooledQuery1.GetQuery(), time1, true);
+		//RHICmdList.GetRenderQueryResult(PooledQuery2.GetQuery(), time2, true);
+		//RHICmdList.GetRenderQueryResult(PooledQuery3.GetQuery(), time3, true);
+		//PooledQuery1.ReleaseQuery();
+		//PooledQuery2.ReleaseQuery();
+		//PooledQuery3.ReleaseQuery();
+
+
+		//UE_LOG(LogTemp, Warning, TEXT("PointCloudGenerate Excute in %f seconds."), (time2-time1) / 1000000.0);
+		//UE_LOG(LogTemp, Warning, TEXT("JFA Excute in %f seconds."), (time3 - time2)/1000000.0);
 	}
 	
 
@@ -435,9 +406,8 @@ void ScatterFoliagePass_RenderThread(
 
 void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, TArray<FBiomePipelineContext>& BiomePipelineContext)
 {
-	double start = FPlatformTime::Seconds();
-	
-	
+	double start, end;
+	start = FPlatformTime::Seconds();
 	for (FBiomePipelineContext& Context : BiomePipelineContext)
 	{
 		ScatterFoliagePass_RenderThread
@@ -447,9 +417,9 @@ void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ER
 			Context
 		);
 	}
+	end = FPlatformTime::Seconds();
 
-	double end = FPlatformTime::Seconds();
-	UE_LOG(LogTemp, Warning, TEXT("Dispatch executed in %f seconds."), end - start);
+	UE_LOG(LogTemp, Warning, TEXT("Command Dispatch in %f seconds."), end - start);
 	
 	start = FPlatformTime::Seconds();
 	for (FBiomePipelineContext& Context : BiomePipelineContext)
@@ -461,9 +431,11 @@ void BiomeGeneratePipeline_RenderThread(FRHICommandListImmediate& RHICmdList, ER
 	}
 
 	end = FPlatformTime::Seconds();
-	UE_LOG(LogTemp, Warning, TEXT("Total ReadBack executed in %f seconds."), end - start);
+	UE_LOG(LogTemp, Warning, TEXT("RenderThread executed in %f seconds."), end - start);
+	
+	
 }
-void UReaTimeScatterLibrary::BiomeGeneratePipeline(
+FRenderCommandFence UReaTimeScatterLibrary::BiomeGeneratePipeline(
 	UObject* WorldContextObject,
 	TArray<FBiomePipelineContext>& BiomePipelineContext
 )
@@ -489,58 +461,7 @@ void UReaTimeScatterLibrary::BiomeGeneratePipeline(
 
 			}
 	);
-
 	FRenderCommandFence Fence;
 	Fence.BeginFence();
-	Fence.Wait();
-}
-
-void UReaTimeScatterLibrary::ScatterWithCollision(
-	UObject* WorldContextObject,
-	TArray<UTextureRenderTarget2D*> DensityMaps,
-	UTextureRenderTarget2D* OutputDistanceField, 
-	FVector2D BottomLeft, FVector2D TopRight, 
-	const FScatterPattern& Pattern, 
-	const TArray<FSpeciesProxy>& InData, 
-	TArray<FScatterPointCloud>& OutData, 
-	bool FlipY,
-	bool UseGPU)
-{
-	return;
-
-}
-
-
-void UReaTimeScatterLibrary::JumpFlood(
-	UObject* WorldContextObject,
-	UTextureRenderTarget2D* InputSeed, 
-	UTextureRenderTarget2D* InputStepRT, 
-	UTextureRenderTarget2D* OutputStepRT,
-	UTextureRenderTarget2D* OutputSDF,
-	float LengthScale)
-{
-	check(IsInGameThread());
-
-
-	/*FRHITexture* InputSeedResource = InputSeed->TextureReference.TextureReferenceRHI->GetTextureReference()->GetReferencedTexture();
-	FTextureRenderTargetResource* InputStepRTResource = InputStepRT->GameThread_GetRenderTargetResource();
-	FTextureRenderTargetResource* OutputStepRTResource = OutputStepRT->GameThread_GetRenderTargetResource();
-	FTextureRenderTargetResource* OutputSDFResource = OutputSDF->GameThread_GetRenderTargetResource();
-	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)
-	(
-		[InputSeedResource, InputStepRTResource, OutputStepRTResource, OutputSDFResource, LengthScale, FeatureLevel](FRHICommandListImmediate& RHICmdList)
-		{
-			JumpFlood_RenderThread
-			(
-				RHICmdList,
-				InputSeedResource,
-				InputStepRTResource,
-				OutputStepRTResource,
-				OutputSDFResource,
-				LengthScale,
-				FeatureLevel
-			);
-		}
-	);*/
+	return Fence;
 }

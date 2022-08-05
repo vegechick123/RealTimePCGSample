@@ -1,10 +1,11 @@
 #include "/Engine/Public/Platform.ush"
-
 struct FScatterPoint
 {
     float LocationX;
     float LocationY;
     float LocarionZ;
+    float Scale;
+    uint RandomID;
 };
 RWStructuredBuffer<uint> InstanceCountBuffer;
 float2 InputPattern[64];
@@ -21,6 +22,8 @@ uint2 CenterOffset;
 float4 TotalRect;
 float4 ClipRect;
 float Ratio;
+float MaxRandomScale;
+float MinRandomScale;
 float RadiusScale;
 uint FlipY;
 RWStructuredBuffer<FScatterPoint> OutputPointCloud;
@@ -69,8 +72,10 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     float placementSDF = PlacementSDF.SampleLevel(LinearSampler, uv, 0);
     float collisionSDF = InputSDF.SampleLevel(LinearSampler, uv, 0);
     
-    float hash1 = frac(dot(hashSeed.zyy * (hashSeed.xxy + float3(43.1275, 11.418, -17.1634)) / 3.91, float3(12.739, 3.1415926, 35.12)));
-    
+    float hash1 = frac(dot(hashSeed.zyy * (hashSeed.xxy + float3(43.1275, 11.418, -17.1634)), float3(12.739, 3.1415926, 35.12)));
+    float hash2 = frac(dot(hashSeed.yzx * (hashSeed.zyy + float3(23.1415, -37.853, 49.264)), float3(-21.354,93.85439 , 63.1415926)));
+    uint hash3 = (uint) (hash1*hash2 *16464682);
+    float scale = lerp(MaxRandomScale, MinRandomScale, hash2);
     uint curindex;
     uint2 sdfSize;
     OutputSDF.GetDimensions(sdfSize.x, sdfSize.y);
@@ -78,7 +83,7 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
     if (r * Ratio > hash1 && collisionSDF > 50 * RadiusScale && placementSDF > 50 * RadiusScale)
     {
         
-        OutputSDF[sdfSize * uv] = 50 * RadiusScale;
+        OutputSDF[sdfSize * uv] = 50 * RadiusScale * (scale / MaxRandomScale);
         if (InRect(pos, ClipRect))
         {
             return;
@@ -87,6 +92,8 @@ void MainComputeShader(uint3 Gid : SV_GroupID, //atm: -, 0...256, - in rows (Y) 
         res.LocationX = pos.x;
         res.LocationY = pos.y;
         res.LocarionZ = BasicHeight - DepthTexture.SampleLevel(LinearSampler, uv, 0);
+        res.Scale = scale;
+        res.RandomID = hash3;
         OutputPointCloud[curindex] = res;
         
     }
