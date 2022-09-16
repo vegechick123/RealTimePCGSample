@@ -47,7 +47,10 @@ void FBiomePipelineContext::InitRenderThreadResource()
 {
 	PlacementMapResource = PlacementMap->GameThread_GetRenderTargetResource();
 
-	DepthMapResource = DepthMap->GameThread_GetRenderTargetResource();
+	if (IsValid(DepthMap))
+	{
+		DepthMapResource = DepthMap->GameThread_GetRenderTargetResource();
+	}
 	for (UTextureRenderTarget2D* DensityMap : DensityMaps)
 		DensityResources.Add(DensityMap->GameThread_GetRenderTargetResource());
 
